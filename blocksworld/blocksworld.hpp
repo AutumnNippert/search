@@ -14,7 +14,7 @@ extern "C" unsigned long hashbytes(unsigned char[], unsigned int);
 class Blocksworld{
 public:
     typedef unsigned char Block;
-	typedef unsigned int Cost;
+	typedef int Cost;
     typedef unsigned short Oper;
 
     enum{Nblocks = NBLOCKS};

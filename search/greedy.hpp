@@ -57,9 +57,12 @@ template <class D, bool speedy = false> struct Greedy : public SearchAlgorithm<D
 		SearchAlgorithm<D>(argc, argv), closed(30000001) {
 		nodes = new Pool<Node>();
         dropdups = false;
+		dump = false;
         for (int i = 0; i < argc; i++) {
           if (strcmp(argv[i], "-dropdups") == 0)
             dropdups = true;
+		  if (strcmp(argv[i], "-dump") == 0)
+			dump = true;
         }
 	}
 
@@ -79,8 +82,23 @@ template <class D, bool speedy = false> struct Greedy : public SearchAlgorithm<D
 			Node *n = open.pop();
 			State buf, &state = d.unpack(buf, n->state);
 
+			if(dump && n) {
+			  d.dumpstate(stderr, state);
+			}
+
 			if (d.isgoal(state)) {
 				solpath<D, Node>(d, n, this->res);
+				
+				// print solution path if dumping
+				if(dump)
+				  fprintf(stderr, "\nSolution path:\n");
+				Node *tmp = n;
+				while(dump && tmp) {
+				  State buf, &state = d.unpack(buf, tmp->state);
+				  d.dumpstate(stderr, state);
+				  tmp = tmp->parent;
+				}
+				
 				break;
 			}
 
@@ -168,6 +186,7 @@ private:
 	}
 
     bool dropdups;
+    bool dump;
 	OpenList<Node, Node, Cost> open;
  	ClosedList<Node, Node, D> closed;
 	Pool<Node> *nodes;

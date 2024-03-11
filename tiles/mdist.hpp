@@ -117,10 +117,18 @@ public:
 		return buf;
 	}
 
+	// void dumpstate(FILE *out, State &s) const {
+	// 	s.ts[s.b] = 0;
+	// 	Tiles::dumptiles(out, s.ts);
+	// }
+
 	void dumpstate(FILE *out, State &s) const {
 		s.ts[s.b] = 0;
-		Tiles::dumptiles(out, s.ts);
+		PackedState pst;
+		pack(pst, s);
+		fprintf(out, "%lu", pst.hash(this));
 	}
+  
 
 	Cost pathcost(const std::vector<State>&, const std::vector<Oper>&);
 

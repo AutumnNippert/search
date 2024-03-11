@@ -127,6 +127,10 @@ public:
 		return heap.empty();
 	}
 
+	unsigned long size() {
+		return heap.size();
+	}
+
 	bool mem(Node *n) {
 		return Ops::getind(n) != -1;
 	}
@@ -196,6 +200,8 @@ class OpenList <Ops, Node, IntOpenCost> {
 		}
 
 		bool empty() { return fill == 0; }
+
+		unsigned long size() { return fill; }
 
 		unsigned long fill;
 		unsigned int max;
@@ -312,7 +318,7 @@ public:
 		heap.clear();
 	}
 
-	int size() {
+	unsigned long size() {
 		return heap.size();
 	}
 

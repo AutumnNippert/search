@@ -3,6 +3,7 @@
 
 #include "../utils/utils.hpp"
 #include "../gridnav/gridmap.hpp"
+#include "../structs/binheap.hpp"
 #include <memory>
 #include <cstring>
 #include <cstdio>
@@ -41,65 +42,123 @@ public:
 
 		int loc, energy, ndirt, weight;
 		std::shared_ptr<std::vector<bool> > dirt;
+		Cost dirt_dist;
 	};
 
 	typedef State PackedState;
 
 	State initialstate(void) const;
 
-	Cost h(const State &s) const {
-		unsigned int i;
-		for (i = 0; i < s.dirt->size() && !s.dirt->at(i); i++)
-			;
+	Cost md(const std::pair<int, int> a, const std::pair<int, int> b) const {
+		int ax = a.first;
+		int ay = a.second;
 
-		int minx = dirtLocs[i].first;
-		int maxx = minx;
-		int miny = dirtLocs[i].second;
-		int maxy = miny;
+		int bx = b.first;
+		int by = b.second;
 
-		for (i++; i < s.dirt->size(); i++) {
-			if (!s.dirt->at(i))
-				continue;
-			int x = dirtLocs[i].first, y = dirtLocs[i].second;
-			if (x < minx)
-				minx = x;
-			if (x > maxx)
-				maxx = x;
-			if (y < miny)
-				miny = y;
-			if (y > maxy)
-				maxy = y;
+		return abs(ax - bx) + abs(ay - by);
+	}
+
+	struct MSTNode {
+		int openind;
+		int dist;
+		std::pair<int, int> dirtloc;
+		int ind;
+
+		MSTNode(int dst, std::pair<int, int> dl, int i) :
+		  openind(-1), dist(dst), dirtloc(dl), ind(i) {
 		}
 
-		assert(s.weight > 0);
-		return s.ndirt + ((maxx-minx) + (maxy-miny)) * s.weight;
+		static void setind(MSTNode *n, int i) {
+			n->openind = i;
+		}
+	  
+		static bool pred(MSTNode *a, MSTNode *b) {
+			return a->dist < b->dist;
+		}
+	  
+	};
+
+	Cost getMST(const State &s) const {
+		int sum = 0;
+
+		if (s.ndirt == 0) {
+			return 0;
+		}
+		
+		BinHeap<MSTNode, MSTNode *> heap;
+
+		int dists[s.dirt->size()];
+		
+		unsigned int i;
+		for (i = 0; i < s.dirt->size() && !s.dirt->at(i); i++) {
+			dists[i] = 0;
+		}
+
+		std::pair<int, int> root = dirtLocs[i];
+		dists[i] = 0;
+
+		for (i++; i < s.dirt->size(); i++) {
+			if (!s.dirt->at(i)) {
+				dists[i] = 0;
+				continue;
+			}
+
+			MSTNode *n = new MSTNode(md(root, dirtLocs[i]), dirtLocs[i], i);
+			heap.push(n);
+			dists[i] = n->dist;
+		}
+
+		while(!heap.empty()) {
+			MSTNode *n = *heap.pop();
+
+			for (i = 0; i < heap.size(); i++) {
+		    	MSTNode *other = heap.at(i);
+
+				int dist = md(n->dirtloc, other->dirtloc);
+				if(dist < other->dist) {
+					other->dist = dist;
+					heap.update(i);
+					dists[other->ind] = dist;
+				}
+			}
+			
+			delete n;
+		}
+		
+		for (i = 0; i < s.dirt->size(); i++) {
+			sum += dists[i];
+		}
+		
+		return sum;
+	}
+
+	Cost h(const State &s) const {
+		return s.ndirt + (d(s) - s.ndirt) * s.weight;
 	}
 
 	Cost d(const State &s) const {
+
+		if (s.ndirt == 0) {
+			return 0;
+		}
+		
 		unsigned int i;
 		for (i = 0; i < s.dirt->size() && !s.dirt->at(i); i++)
 			;
 
-		int minx = dirtLocs[i].first;
-		int maxx = minx;
-		int miny = dirtLocs[i].second;
-		int maxy = miny;
+		std::pair<int, int> agentLoc = map->coord(s.loc);
+		int agentDist = md(agentLoc, dirtLocs[i]);
 
 		for (i++; i < s.dirt->size(); i++) {
 			if (!s.dirt->at(i))
 				continue;
-			int x = dirtLocs[i].first, y = dirtLocs[i].second;
-			if (x < minx)
-				minx = x;
-			if (x > maxx)
-				maxx = x;
-			if (y < miny)
-				miny = y;
-			if (y > maxy)
-				maxy = y;
+			int d = md(agentLoc, dirtLocs[i]);
+			agentDist = std::min(agentDist, d);
 		}
-
-		return s.ndirt + (maxx-minx) + (maxy-miny);
+		
+		assert(s.weight > 0);
+		return s.ndirt + (agentDist + s.dirt_dist) * 1.0;
 	}
 
 	bool isgoal(const State &s) const {
@@ -112,8 +171,10 @@ public:
 				return;
 
 			int dirt = d.dirt[s.loc];
-			if (dirt >= 0 && s.dirt->at(dirt))
+			if (dirt >= 0 && s.dirt->at(dirt)) {
 				ops[n++] = Suck;
+				return;
+			}
 
 			for (unsigned int i = 0; i < d.map->nmvs; i++) {
 				if (d.map->ok(s.loc, d.map->mvs[i]))
@@ -160,6 +221,8 @@ public:
 				revop = Nop;
 				revcost = Cost(-1);
 
+				state.dirt_dist = d.getMST(state);
+
 			} else if (op == Charge) {
 				fatal("Charge operator!");
 
@@ -183,10 +246,15 @@ public:
 	}
 
 	void dumpstate(FILE *out, const State &s) const {
-		auto pt = map->coord(s.loc);
-		fprintf(out, "(%d, %d), energy=%d, ndirt=%d", pt.first, pt.second, s.energy, s.ndirt);
-		for (unsigned int i = 0; i < s.dirt->size(); i++)
-			fprintf(out, " %d", (int) s.dirt->at(i));
+		// auto pt = map->coord(s.loc);
+		// fprintf(out, "(%d, %d), energy=%d, ndirt=%d", pt.first, pt.second, s.energy, s.ndirt);
+		// for (unsigned int i = 0; i < s.dirt->size(); i++)
+		// 	fprintf(out, " %d", (int) s.dirt->at(i));
+		
+	    fprintf(out, "%d %d %d ", s.loc, s.energy, s.ndirt);
+		
+	    for (unsigned int i = 0; i < s.dirt->size(); i++)
+		 	fprintf(out, "%d", (int) s.dirt->at(i));
 	}
 
 	Cost pathcost(const std::vector<State>&, const std::vector<Oper>&);

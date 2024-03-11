@@ -75,6 +75,7 @@ Vacuum::State Vacuum::initialstate() const {
 	s.ndirt = ndirt();
 	s.dirt = std::make_shared<std::vector<bool> >(ndirt(), true);
 	s.weight = 1;
+	s.dirt_dist = this->getMST(s);
 	return s;
 }
 

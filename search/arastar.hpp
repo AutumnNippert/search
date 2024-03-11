@@ -29,6 +29,7 @@ template <class D> struct Arastar : public SearchAlgorithm<D> {
 		PackedState state;
 		Oper op, pop;
 		Cost g, h;
+		int depth;
 		double fprime;
 
 		Node() : openind(-1) {
@@ -97,19 +98,31 @@ template <class D> struct Arastar : public SearchAlgorithm<D> {
 	Arastar(int argc, const char *argv[]) :
 			SearchAlgorithm<D>(argc, argv), closed(30000001),
 			incons(30000001), cost(-1) {
+		dump = false;
 
 		wt0 = dwt = -1;
+		wsched = false;
+		w_ind = -1;
 		for (int i = 0; i < argc; i++) {
+			if (strcmp(argv[i], "-dump") == 0)
+				dump = true;
 			if (i < argc - 1 && strcmp(argv[i], "-wt0") == 0)
 				wt0 = strtod(argv[++i], NULL);
 			else if (i < argc - 1 && strcmp(argv[i], "-dwt") == 0)
 				dwt = strtod(argv[++i], NULL);
+			else if (strcmp(argv[i], "-wsched") == 0)
+				wsched = true;
 		}
 
-		if (wt0 < 1)
-			fatal("Must specify initial weight ≥ 1 using -wt0");
-		if (dwt <= 0)
-			fatal("Must specify weight decrement > 0 using -dwt");
+		if(!wsched) {
+			if (wt0 < 1)
+				fatal("Must specify initial weight ≥ 1 using -wt0");
+			if (dwt <= 0)
+				fatal("Must specify weight decrement > 0 using -dwt");
+		} else {
+			w_ind = 0;
+			wt0 = schedule[w_ind];
+		}
 
 		wt = wt0;
 		nodes = new Pool<Node>();
@@ -129,6 +142,10 @@ template <class D> struct Arastar : public SearchAlgorithm<D> {
 		Node *n0 = init(d, s0);
 		closed.add(n0);
 		open.push(n0);
+		
+		if(dump) {
+		  fprintf(stderr, "depth,expnum,state,g\n");
+		}
 
 		unsigned long n = 0;
 		do {
@@ -170,17 +187,30 @@ template <class D> struct Arastar : public SearchAlgorithm<D> {
 		closed.prstats(stdout, "closed ");
 		dfpair(stdout, "open list type", "%s", "binary heap");
 		dfpair(stdout, "node size", "%u", sizeof(Node));
-		dfpair(stdout, "initial weight", "%g", wt0);
-		dfpair(stdout, "weight decrement", "%g", dwt);
+		if(!wsched) {
+			dfpair(stdout, "initial weight", "%g", wt0);
+			dfpair(stdout, "weight decrement", "%g", dwt);
+		} else {
+			dfpair(stdout, "weight schedule", "{5, 3, 2, 1.5, 1}");
+		}
 	}
 
 protected:
 
 	// nextwt decrements the weight by the given value.
 	void nextwt() {
-		wt = wt - dwt > 1.0 ? wt - dwt : 1.0;
-		if (wt < 1.0 + sqrt(std::numeric_limits<double>::epsilon()))
-			wt = 1.0;
+		if (wsched) {
+			w_ind++;
+			if(w_ind < nweights) {
+				wt = schedule[w_ind];
+			} else {
+				wt = 1.0;
+			}
+		} else {
+			wt = wt - dwt > 1.0 ? wt - dwt : 1.0;
+			if (wt < 1.0 + sqrt(std::numeric_limits<double>::epsilon()))
+				wt = 1.0;
+		}
 	}
 
 	// rowhdr outputs the incumbent solution row header line.
@@ -203,12 +233,19 @@ protected:
 			Node *n = *open.pop();
 			State buf, &state = d.unpack(buf, n->state);
 
+			if(dump) {
+			  fprintf(stderr, "%d,%lu,", n->depth,
+					  SearchAlgorithm<D>::res.expd);
+			  d.dumpstate(stderr, state);
+			  fprintf(stderr, ",%f\n", (float)n->g);
+			}
+
 			if (d.isgoal(state)) {
 				cost = (double) n->g;
 				solpath<D, Node>(d, n, this->res);
 				goal = true;
 			}
-
+			
 			expand(d, n, state);
 		}
 		return goal;
@@ -286,6 +323,7 @@ protected:
 		Node *kid = nodes->construct();
 		typename D::Edge e(d, state, op);
 		kid->g = parent->g + e.cost;
+		kid->depth = parent->depth + 1;
 		d.pack(kid->state, e.state);
 
 		unsigned long hash = kid->state.hash(&d);
@@ -298,6 +336,7 @@ protected:
 			}
 			dup->fprime = dup->fprime - dup->g + kid->g;
 			dup->g = kid->g;
+			dup->depth = kid->depth;
 			dup->parent = parent;
 			dup->op = op;
 			dup->pop = e.revop;
@@ -320,6 +359,7 @@ protected:
 	Node *init(D &d, State &s0) {
 		Node *n0 = nodes->construct();
 		d.pack(n0->state, s0);
+		n0->depth = 0;
 		n0->g = Cost(0);
 		n0->h = d.h(s0);
 		n0->fprime = wt * n0->h;
@@ -333,6 +373,11 @@ protected:
  	ClosedList<Node, Node, D> closed;
 	Incons incons;
 	Pool<Node> *nodes;
+	bool wsched;
+    bool dump;
+	int w_ind;
+	double schedule[5] = {5, 3, 2, 1.5, 1};
+	int nweights = 5;
 
 	double cost;	// solution cost
 };

@@ -52,6 +52,15 @@ template <class D> struct UniformCost : public SearchAlgorithm<D> {
 
 	UniformCost(int argc, const char *argv[]) :
 		SearchAlgorithm<D>(argc, argv), closed(30000001) {
+		dump = false;
+		allstates = false;
+		for (int i = 0; i < argc; i++) {
+			if (strcmp(argv[i], "-dump") == 0)
+				dump = true;
+			if (strcmp(argv[i], "-all") == 0)
+				allstates = true;
+		}
+	  
 		nodes = new Pool<Node>();
 	}
 
@@ -71,7 +80,7 @@ template <class D> struct UniformCost : public SearchAlgorithm<D> {
 			Node *n = open.pop();
 			State buf, &state = d.unpack(buf, n->state);
 
-			if (d.isgoal(state)) {
+			if (!allstates && d.isgoal(state)) {
 				solpath<D, Node>(d, n, this->res);
 				break;
 			}
@@ -101,8 +110,10 @@ private:
 	void expand(D &d, Node *n, State &state) {
 		SearchAlgorithm<D>::res.expd++;
 
-		//d.dumpstate(stderr, state);
-		//fprintf(stderr, "%f\n", n->g);
+		if(dump){
+			d.dumpstate(stderr, state);
+			fprintf(stderr, ",%f\n", (float)n->g);
+		}
 
 		typename D::Operators ops(d, state);
 		for (unsigned int i = 0; i < ops.size(); i++) {
@@ -163,4 +174,6 @@ private:
 	OpenList<Node, Node, Cost> open;
  	ClosedList<Node, Node, D> closed;
 	Pool<Node> *nodes;
+    bool dump;
+    bool allstates;
 };
