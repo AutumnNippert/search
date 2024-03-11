@@ -21,7 +21,7 @@ struct GridMap {
 	// uniform returns a GridMap that has uniformly
 	// distributed obstacles.
 	static GridMap uniform(unsigned int w, unsigned int h,
-		double prob, uint64_t seed);
+		double prob, std::size_t seed);
 
 	virtual ~GridMap();
 

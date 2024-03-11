@@ -1,5 +1,6 @@
 // Copyright © 2013 the Search Authors under the MIT license. See AUTHORS for the list of authors.
 #include <cassert>
+#include <functional>
 #include <boost/cstdint.hpp>
 #include <boost/integer/static_log2.hpp>
 #include <boost/multiprecision/cpp_int.hpp>
@@ -159,7 +160,7 @@ public:
 	}
 
 	unsigned long hash(const void*) {
-		boost::hash<boost::multiprecision::uint128_t> hasher;
+		std::hash<boost::multiprecision::uint128_t> hasher;
 		return hasher(word);
 	}
 
