@@ -37,6 +37,7 @@ class Segments {
 	};
 
 public:
+	
 
 	// A Sweep contains the geometry primitives that
 	// represent a segment sweeping through space.
@@ -122,12 +123,14 @@ public:
 		// need to be moved to their goal location.
 		unsigned int nleft;
 
-	private:
-		// init initializes the poses, lines, and nleft fields of a
-		// state from a vector of poses.
-		void init(const Segments&, const std::vector<Pose>&);
+		private:
+			// init initializes the poses, lines, and nleft fields of a
+			// state from a vector of poses.
+			void init(const Segments&, const std::vector<Pose>&);
 	};
-
+	void dumpstate(FILE *out, const State &s) const {
+		return;
+	}
 	struct PackedState {
 		PackedState() { }
 
