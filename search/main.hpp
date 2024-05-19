@@ -24,6 +24,8 @@
 //#include "ees.hpp"
 #include "aees.hpp"
 #include "ucs.hpp"
+#include "naive-cafe.hpp"
+// #include "cafe.hpp"
 
 #include <cstddef>
 #include <cstdio>
@@ -135,6 +137,10 @@ template<class D> SearchAlgorithm<D> *getsearch(int argc, const char *argv[]) {
 		return new AnytimeEES<D>(argc, argv);
 	else if (strcmp(argv[1], "ucs") == 0)
 		return new UniformCost<D>(argc, argv);
+	else if (strcmp(argv[1], "naive-cafe") == 0)
+		return new Naive_CAFE<D>(argc, argv);
+	// else if (strcmp(argv[1], "cafe") == 0)
+	// 	return new CAFE<D>(argc, argv);
 
 	fatal("Unknown algorithm: %s", argv[1]);
 	return NULL;	// Unreachable

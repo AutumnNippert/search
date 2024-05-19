@@ -55,3 +55,7 @@ traffic/watch
 unknowngridnav/watch
 
 labyrinth/*
+
+.vscode
+*.vw
+*.tar.bz
