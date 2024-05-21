@@ -13,3 +13,9 @@ search/learnh/lms needs lapack:
 	liblapack-dev
 
 Clang versions less than 3.0 do not seem to work.
+
+# Arch Linux dependencies
+extra/boost
+extra/sdl2
+extra/sdl_image
+extra/lapack 

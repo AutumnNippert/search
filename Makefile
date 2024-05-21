@@ -45,7 +45,7 @@ include utils/Make.inc
 include rdb/Make.inc
 include structs/Make.inc
 include search/Make.inc
-include tiles/Make.inc
+# include tiles/Make.inc
 include pancake/Make.inc
 include gridnav/Make.inc
 include visnav/Make.inc
