@@ -59,3 +59,4 @@ labyrinth/*
 .vscode
 *.vw
 *.tar.bz
+massif.*

@@ -26,6 +26,7 @@
 #include "ucs.hpp"
 #include "naive-cafe.hpp"
 // #include "cafe.hpp"
+#include "kbfs.hpp"
 
 #include <cstddef>
 #include <cstdio>
@@ -141,6 +142,8 @@ template<class D> SearchAlgorithm<D> *getsearch(int argc, const char *argv[]) {
 		return new Naive_CAFE<D>(argc, argv);
 	// else if (strcmp(argv[1], "cafe") == 0)
 	// 	return new CAFE<D>(argc, argv);
+	else if (strcmp(argv[1], "kbfs") == 0)
+		return new KBFS<D>(argc, argv);
 
 	fatal("Unknown algorithm: %s", argv[1]);
 	return NULL;	// Unreachable
