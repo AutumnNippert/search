@@ -83,19 +83,23 @@ template <class D> struct Naive_CAFE : public SearchAlgorithm<D> { // what is a 
 				solpath<D, Node>(d, n, this->res);
 				break;
 			}
-			if(n->isWorking == 0 || n->isWorking == 1){
+			if(n->isWorking == 0){ // If not expanded, expand in the main thread
 				n->isWorking = 1;
 				expand(d, n, state);
+			}
+			while(n->isWorking == 1){
+				// busy wait as the node is currently being expanded by a child
 			}
 			// for each child node, spawn a thread to expand it
 			for(size_t i = 0; i < n->children.size(); i++){
 				Node *child = n->children[i];
+				child->isWorking = 1;
 				// if the child is not in the closed list, add it to the closed list and the open list
 				unsigned long hash = child->state.hash(&d);
 				if(!closed.find(child->state, hash)){
 					closed.add(child);
 					open.push(child);
-				}
+				} // Duplicates should not appear so if they are in the closed list, they should not be re-expanded
 				// start and detach a thread to expand the child node
 				std::thread t(&Naive_CAFE::expand, this, std::ref(d), child, std::ref(d.unpack(buf, child->state)));
 				t.detach();
@@ -125,7 +129,7 @@ private:
 
 		typename D::Operators ops(d, state);
 		for (unsigned int i = 0; i < ops.size(); i++) {
-			if (ops[i] == n->pop) // what is pop?
+			if (ops[i] == n->pop) 
 				continue;
 			SearchAlgorithm<D>::res.gend++;
 

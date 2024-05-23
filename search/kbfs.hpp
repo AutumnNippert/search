@@ -96,7 +96,7 @@ template <class D> struct KBFS : public SearchAlgorithm<D> { // what is a templa
 
 				executingNodes.push_back(n);
 				std::thread t(&KBFS::expand, this, std::ref(d), n, std::ref(state));
-				threads.push_back(move(t));
+				threads.push_back(std::move(t));
 			}
 
 			if (goalFound) // if goal is found, break out of while loop
