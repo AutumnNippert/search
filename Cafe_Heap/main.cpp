@@ -2,7 +2,7 @@
 #include <vector>
 #include <limits>
 #include "flagged_ptr.hpp"
-#include "Ordered_Circular_Queue.hpp"
+#include "ordered_circular_queue.hpp"
 
 struct DummyNode{
     int x;
