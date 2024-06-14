@@ -3,7 +3,7 @@
 #include <cassert>
 #include <atomic>
 
-template <class ptr_t>
+template <typename ptr_t>
 class Flagged_Pointer{
     private:
         std::atomic<uintptr_t> _data;  
@@ -31,4 +31,11 @@ class Flagged_Pointer{
         constexpr bool expanded() const{
             return _data.load() & expanded_bit;
         }  
+};
+
+template <typename ptr_t, typename Compare> 
+struct flagged_ptr_cmp{
+    bool operator () (const Flagged_Pointer<ptr_t>& x, const Flagged_Pointer<ptr_t>& y) const {
+        return Compare()(x.get_pointer(), y.get_pointer());
+    }
 };
