@@ -4,7 +4,7 @@ DEBUG_FLAGS := -g -Werror -Wall -Wextra
 RELEASE_FLAGS := -O3
 
 SRC := main.cpp
-HDR := flagged_ptr.hpp cafe_heap.hpp Ordered_Circular_Queue.hpp
+HDR := flagged_ptr.hpp cafe_heap.hpp ordered_circular_queue.hpp
 TARGET := program
 
 DEBUG_DIR := debug
