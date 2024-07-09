@@ -41,22 +41,22 @@ TESTS:=
 
 all: everything tests
 
-include utils/Make.inc
-include rdb/Make.inc
-include structs/Make.inc
-include search/Make.inc
-# include tiles/Make.inc
-include pancake/Make.inc
-include gridnav/Make.inc
-include visnav/Make.inc
-include plat2d/Make.inc
-include graphics/Make.inc
-include drobot/Make.inc
-include segments/Make.inc
-include vacuum/Make.inc
-include traffic/Make.inc
-include synth_tree/Make.inc
-include blocksworld/Make.inc
+# include utils/Make.inc
+# include rdb/Make.inc
+# include structs/Make.inc
+# include search/Make.inc
+include tiles/Make.inc
+# include pancake/Make.inc
+# include gridnav/Make.inc
+# include visnav/Make.inc
+# include plat2d/Make.inc
+# include graphics/Make.inc
+# include drobot/Make.inc
+# include segments/Make.inc
+# include vacuum/Make.inc
+# include traffic/Make.inc
+# include synth_tree/Make.inc
+# include blocksworld/Make.inc
 
 everything: $(EVERYTHING)
 

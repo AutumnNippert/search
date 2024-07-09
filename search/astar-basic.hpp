@@ -108,19 +108,45 @@ private:
 			if (ops[i] == n->pop)
 				continue;
 			SearchAlgorithm<D>::res.gend++;
-			// considerkid code but slightly modified to not add to open list (it also doesn't need to worry about the closed list since the main thread will handle that)
+
 			Node *kid = nodes->construct(); // nodes->construct() is a function that returns a new node from the pool?
 			assert (kid);
             Oper op = ops[i];
 			typename D::Edge e(d, state, op);
 			kid->g = n->g + e.cost;
-			d.pack(kid->state, e.state); // expands the nodes?
+			d.pack(kid->state, e.state);
 
-			// unsigned long hash = kid->state.hash(&d); // ill hash later in the main thread
+			unsigned long hash = kid->state.hash(&d);
+			Node *dup = closed.find(kid->state, hash);
+			if (dup) {
+				this->res.dups++;
+				if (kid->g >= dup->g) {
+					nodes->destruct(kid);
+					return;
+				}
+				bool isopen = open.mem(dup);
+				if (isopen)
+					open.pre_update(dup);
+				dup->f = dup->f - dup->g + kid->g;
+				dup->g = kid->g;
+				dup->parent = n;
+				dup->op = op;
+				dup->pop = e.revop;
+				if (isopen) {
+					open.post_update(dup);
+				} else {
+					this->res.reopnd++;
+					open.push(dup);
+				}
+				nodes->destruct(kid);
+				continue;
+			}
+
 			kid->f = kid->g + d.h(e.state);
 			kid->parent = n;
 			kid->op = op;
 			kid->pop = e.revop;
+			closed.add(kid, hash);
 			open.push(kid);
 		}
 	}

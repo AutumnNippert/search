@@ -1,8 +1,5 @@
 tiles:\
-	tiles/11md_solver\
 	tiles/15md_solver\
-	tiles/24md_solver\
-	tiles/generator\
 
 CLEAN+=\
 	tiles/11md_solver\

@@ -19,7 +19,7 @@ Clang versions less than 3.0 do not seem to work.
 * extra/lapack 
 
 # Running Instructions
-Make sure the algorithm you are trying to run is in ./search/search/main.hpp
+Make sure the algorithm you are trying to run is in `./search/search/main.hpp` as well as in the `makefile`
 Also make sure that the domain you are trying to run the algorithm on has a problem file
 ```
 ~/search$ make
