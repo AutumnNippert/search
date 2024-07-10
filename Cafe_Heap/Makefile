@@ -1,10 +1,10 @@
 CXX := g++
 CXXFLAGS := -std=c++20
 DEBUG_FLAGS := -g -Werror -Wall -Wextra
-RELEASE_FLAGS := -O3
+RELEASE_FLAGS := -O3 -DNDEBUG
 
-SRC := main.cpp
-HDR := flagged_ptr.hpp cafe_heap.hpp ordered_circular_queue.hpp
+SRC := heap_test.cpp
+HDR :=  cafe_heap.hpp
 TARGET := program
 
 DEBUG_DIR := debug
