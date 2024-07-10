@@ -8,13 +8,21 @@
 using handle_t = std::size_t;
 
 struct PrecomputeFlags{
-    bool reserved;
-    bool completed;
+    std::atomic<bool> completed;
+    std::atomic<bool> reserved;
+    
+    inline void zero(){
+        completed.store(false, std::memory_order_relaxed);
+        reserved.store(false, std::memory_order_relaxed);
+    }
 
-    constexpr PrecomputeFlags():reserved(false),completed(false){}
+    inline PrecomputeFlags(){
+        zero();
+    }
 
-    static constexpr PrecomputeFlags both_false(){
-        return PrecomputeFlags();
+    inline bool reserve(){
+        bool expected = false;
+        return reserved.compare_exchange_strong(expected, true, std::memory_order_acq_rel, std::memory_order_acquire);
     }
 
     inline friend std::ostream& operator<<(std::ostream& stream, const PrecomputeFlags& flag){
@@ -28,20 +36,17 @@ struct HeapNode{
     Node_t search_node;  // the usual search node: {state, g, f, parent...}
     std::vector<Node_t> * precomputed_successors;  // array of precomputed successors 
     handle_t handle;
-    std::atomic<PrecomputeFlags> flags; // precomputation flags
+    PrecomputeFlags flags; // precomputation flags
 
     constexpr HeapNode(){};
 
-    constexpr HeapNode(const Node_t& node, handle_t h):search_node(node),precomputed_successors(nullptr),handle(h){
-        flags.store(PrecomputeFlags::both_false(), std::memory_order_release);
-    }
+    inline HeapNode(const Node_t& node, handle_t h):search_node(node),precomputed_successors(nullptr),handle(h),flags(){}
     
-    constexpr HeapNode(const HeapNode& n):search_node(n.search_node),precomputed_successors(n.precomputed_successors),handle(n.handle){}
-
     constexpr HeapNode& operator=(HeapNode&& other){
         search_node = std::move(other.search_node);
         precomputed_successors = std::move(other.precomputed_successors);
         handle = std::move(other.precomputed_successors);
+        flags = std::move(other.flags);
         return *this;
     }
 
@@ -181,7 +186,7 @@ class CafeMinBinaryHeap{
             delete[] _data;
         }
 
-        inline HeapNode<Node_t, Compare> top() const{
+        inline const HeapNode<Node_t, Compare> & top() const{
             assert(size > 0);
             return *(_data[0].load(std::memory_order_acquire));
         }
@@ -196,7 +201,7 @@ class CafeMinBinaryHeap{
         inline void push(HeapNode<Node_t, Compare> * node){
             std::size_t s = size.load(std::memory_order_relaxed);
             node->handle = s;
-            node->flags.store(PrecomputeFlags::both_false(), std::memory_order_relaxed);
+            node->flags.zero();
             node->precomputed_successors = nullptr;
             _data[s].store(node, std::memory_order_relaxed);
             pull_up(s);
@@ -207,13 +212,23 @@ class CafeMinBinaryHeap{
             pull_up(i);
         }
 
+        inline HeapNode<Node_t, Compare> * fetch_work() const{
+            std::size_t s = size.load(std::memory_order_acquire);
+            for(std::size_t i = 0; i < s; i++){
+                HeapNode<Node_t, Compare> * n = _data[i].load(std::memory_order_relaxed);
+                if(n->flags.reserve()){
+                    return n;
+                }
+            }
+            return nullptr;
+        }
+
         inline bool heap_property_helper(handle_t i) const{
             if (i >= size){
                 return true;
             }
             auto lhs = left_child(i);
             auto rhs = right_child(i);
-            //std::cerr << "hh: " <<  i << " " <<  lhs << " " << rhs << " "<<size<<"\n"; 
             bool retval = true;
             if (lhs < size){
                 retval &= (!Compare()(_data[lhs].load()->search_node, _data[i].load()->search_node));
