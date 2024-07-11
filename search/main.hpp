@@ -26,6 +26,7 @@
 #include "ucs.hpp"
 #include "naive-cafe.hpp"
 // #include "cafe.hpp"
+#include "astar-basic.hpp"
 #include "kbfs.hpp"
 
 #include <cstddef>
@@ -94,6 +95,8 @@ template<class D> SearchAlgorithm<D> *getsearch(int argc, const char *argv[]) {
 		return new ILDSstar<D>(argc, argv);
 	else if (strcmp(argv[1], "astar") == 0)
 		return new Astar<D>(argc, argv);
+	else if (strcmp(argv[1], "astar-basic") == 0)
+		return new AstarBasic<D>(argc, argv);
 	else if (strcmp(argv[1], "astar-dump") == 0)
 		return new Astar_dump<D>(argc, argv);
 	else if (strcmp(argv[1], "wastar") == 0)
