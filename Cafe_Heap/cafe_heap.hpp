@@ -25,6 +25,10 @@ struct PrecomputeFlags{
         return reserved.compare_exchange_strong(expected, true, std::memory_order_acq_rel, std::memory_order_acquire);
     }
 
+    inline void set_completed(){
+        completed.store(true, std::memory_order_release);
+    }
+
     inline friend std::ostream& operator<<(std::ostream& stream, const PrecomputeFlags& flag){
         stream << flag.reserved << flag.completed;
         return stream;
