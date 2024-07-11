@@ -191,6 +191,10 @@ class CafeMinBinaryHeap{
             pull_up(i);
         }
 
+        inline bool empty() const{ // MAIN THREAD ONLY
+            return size.load(std::memory_order_relaxed) == 0;
+        }
+
         inline HeapNode<Node_t, Compare> * fetch_work() const{  // for worker
             std::size_t s = size.load(std::memory_order_acquire);
             for(std::size_t i = 0; i < s; i++){
