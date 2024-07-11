@@ -25,7 +25,7 @@
 #include "aees.hpp"
 #include "ucs.hpp"
 #include "naive-cafe.hpp"
-// #include "cafe.hpp"
+#include "cafe.hpp"
 #include "astar-basic.hpp"
 #include "kbfs.hpp"
 
