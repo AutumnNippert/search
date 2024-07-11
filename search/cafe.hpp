@@ -15,7 +15,7 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 	struct Node {
 		ClosedEntry<Node, D> closedent;
 		int openind;
-		Node *parent;
+		Node * parent;
 		PackedState state;
 		Oper op, pop;
 		Cost f, g;
@@ -45,18 +45,29 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 			return a->f < b->f;
 		}
 
-		static Cost prio(Node *n) {
+		static Cost prio(const Node *n) {
 			return n->f;
 		}
 
-		static Cost tieprio(Node *n) {
+		static Cost tieprio(const Node *n) {
 			return n->g;
 		}
 	};
 
 	struct NodeComp{
-		bool operator()(const Node& lhs, const Node& rhs) const{
-			return Node::prio(lhs) < Node::prio(rhs);
+		bool operator()(const Node& lhs, const Node& rhs){
+			return Node::prio(&lhs) < Node::prio(&rhs);
+		}
+	};
+
+	template <typename HeapNode, typename Ops>
+	struct ClosedHelper{
+		static PackedState& key(HeapNode * n){
+			return Ops::key(n);
+		}
+
+		static ClosedEntry<HeapNode, D>& closedentry(Node *n){
+			return Ops::closedentry(n);
 		}
 	};
 
@@ -73,7 +84,7 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 		this->start();
 		closed.init(d);
 
-		HeapNode<Node, NodeComp>*n0 = init(d, s0);
+		HeapNode<Node, NodeComp> * n0 = init(d, s0);
 		closed.add(n0);
 		open.push(n0);
 
@@ -150,10 +161,10 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 
 private:
 
-	void expand(D &d, HeapNode<Node, NodeComp>*hn, State &state) {
+	void expand(D& d, HeapNode<Node, NodeComp> * hn, State& state) {
 		SearchAlgorithm<D>::res.expd++;
 
-		Node* n = hn->search_node;
+		Node * n = hn->search_node;
 
 		typename D::Operators ops(d, state);
 		for (unsigned int i = 0; i < ops.size(); i++) {
@@ -161,9 +172,9 @@ private:
 				continue;
 			SearchAlgorithm<D>::res.gend++;
 
-			Node *kid = nodes->construct(); // nodes->construct() is a function that returns a new node from the pool?
+			Node * kid = nodes->construct(); // nodes->construct() is a function that returns a new node from the pool?
 			assert (kid);
-                        Oper op = ops[i];
+			Oper op = ops[i];
 			typename D::Edge e(d, state, op);
 			kid->g = n->g + e.cost;
 			d.pack(kid->state, e.state);
@@ -206,9 +217,9 @@ private:
 		hn->set_completed();
 	}
 
-	HeapNode<Node, NodeComp>*init(D &d, State &s0) {
-		HeapNode<Node, NodeComp>*hn0 = nodes->reserve(1);
-		Node *n0 = hn0->search_node;
+	HeapNode<Node, NodeComp> * init(D &d, State &s0) {
+		HeapNode<Node, NodeComp> * hn0 = nodes->reserve(1);
+		Node * n0 = hn0->search_node;
 		d.pack(n0->state, s0);
 		n0->g = Cost(0);
 		n0->f = d.h(s0);
@@ -218,6 +229,6 @@ private:
 	}
 
 	CafeMinBinaryHeap<Node, NodeComp> open;
- 	ClosedList<HeapNode, HeapNode, D> closed;
+ 	ClosedList<ClosedHelper<HeapNode<Node, NodeComp>, Node>, HeapNode<Node, NodeComp>, D> closed;
 	NodePool<Node, NodeComp> *nodes;
 };
