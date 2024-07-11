@@ -20,16 +20,16 @@ struct PrecomputeFlags{
         zero();
     }
 
-    inline bool reserve(){
+    inline bool reserve(){ // for worker thread
         bool expected = false;
         return reserved.compare_exchange_strong(expected, true, std::memory_order_acq_rel, std::memory_order_acquire);
     }
 
-    inline void set_completed(){
+    inline void set_completed(){ // for worker thread
         completed.store(true, std::memory_order_release);
     }
 
-    inline bool is_completed(){
+    inline bool is_completed(){ // for main thread
         return completed.load(std::memory_order_acquire);
     }
 
@@ -194,9 +194,13 @@ class CafeMinBinaryHeap{
             delete[] _data;
         }
 
-        inline const HeapNode<Node_t, Compare> & top() const{
-            assert(size > 0);
-            return *(_data[0].load(std::memory_order_acquire));
+        inline HeapNode<Node_t, Compare> * get(handle_t i) const{
+            assert(size > i);
+            return _data[0].load(std::memory_order_acquire);
+        }
+
+        inline const HeapNode<Node_t, Compare>& top() const{
+            return *get(0);
         }
 
         inline void pop(){
@@ -220,7 +224,7 @@ class CafeMinBinaryHeap{
             pull_up(i);
         }
 
-        inline HeapNode<Node_t, Compare> * fetch_work() const{
+        inline HeapNode<Node_t, Compare> * fetch_work() const{  // for worker
             std::size_t s = size.load(std::memory_order_acquire);
             for(std::size_t i = 0; i < s; i++){
                 HeapNode<Node_t, Compare> * n = _data[i].load(std::memory_order_relaxed);
