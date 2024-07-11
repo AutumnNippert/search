@@ -29,6 +29,10 @@ struct PrecomputeFlags{
         completed.store(true, std::memory_order_release);
     }
 
+    inline bool is_completed(){
+        return completed.load(std::memory_order_acquire);
+    }
+
     inline friend std::ostream& operator<<(std::ostream& stream, const PrecomputeFlags& flag){
         stream << flag.reserved << flag.completed;
         return stream;
