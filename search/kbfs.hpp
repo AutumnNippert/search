@@ -1,14 +1,16 @@
-// Autumn Nippert
-// KBFS: K-Best First Search
-// https://link.springer.com/article/10.1023/A:1024452529781
-
+// Copyright © 2013 the Search Authors under the MIT license. See AUTHORS for the list of authors.
 #pragma once
 #include "../search/search.hpp"
 #include "../utils/pool.hpp"
-#include <atomic>
-#include <thread>
 
-template <class D> struct KBFS : public SearchAlgorithm<D> { // what is a template? (https://www.geeksforgeeks.org/templates-cpp/)
+#include <boost/asio/thread_pool.hpp>
+#include <boost/asio/post.hpp>
+void busywait()  __attribute__((optimize(0)));
+void busywait(){
+	return;
+}
+
+template <class D> struct KBFS : public SearchAlgorithm<D> {
 
 	typedef typename D::State State;
 	typedef typename D::PackedState PackedState;
@@ -16,16 +18,16 @@ template <class D> struct KBFS : public SearchAlgorithm<D> { // what is a templa
 	typedef typename D::Oper Oper;
 	
 	struct Node {
-		ClosedEntry<Node, D> closedent; // what is a closed entry?
-		int openind; // Open Index
-		Node *parent; // Parent Node
-		std::atomic<int> isWorking; // 0 if not touched, 1 if being expanded, 2 if expanded
+		ClosedEntry<Node, D> closedent;
+		int openind;
+		Node *parent;
 		vector<Node*> children; // Vector of children nodes
 		PackedState state;
 		Oper op, pop;
 		Cost f, g;
 
-		Node() : openind(-1) {}
+		Node() : openind(-1) {
+		}
 
 		static ClosedEntry<Node, D> &closedentry(Node *n) {
 			return n->closedent;
@@ -67,58 +69,110 @@ template <class D> struct KBFS : public SearchAlgorithm<D> { // what is a templa
 		delete nodes;
 	}
 
-	void search(D &d, typename D::State &s0) { // Main While Loop
+	void search(D &d, typename D::State &s0) {
+		//kpbfs main thread
+		long k = 2;
+
 		this->start();
 		closed.init(d);
-		int k = 5;
 
 		Node *n0 = init(d, s0);
 		closed.add(n0);
 		open.push(n0);
 
-		// create vector of k threads
-		vector<thread> threads;
-		vector<Node*> executingNodes;
-		bool goalFound = false;
+		boost::asio::thread_pool tp(k);
 
-		while (!open.empty() && !SearchAlgorithm<D>::limit()) {
+		bool found = false;
+
+		while (!open.empty() && !SearchAlgorithm<D>::limit() && !found) {
+
+			// get k top nodes on open list (less than k if open list is smaller)
+
+			std::vector<Node*> topNodes;
 			for (int i = 0; i < k; i++) {
-				if (open.empty())
+				if (open.empty()) {
 					break;
-				Node *n = open.pop();
+				}
+				topNodes.push_back(open.pop());
+			}
+
+			size_t completedCount = 0;
+
+			// give nodes to thread pool
+			size_t size = topNodes.size();
+			for (size_t i = 0; i < size; i++) {
+				// cout << "ThreadPool :: Posting to thread pool" << endl;
+				Node* n = topNodes[i];
+				State buf, &state = d.unpack(buf, n->state);
+				boost::asio::post(tp, [this, &d, n, &state, &completedCount](){
+					kbfsWorker(d, n, state, completedCount);
+				});
+			}
+
+			// wait till done
+			while(completedCount < size){
+				busywait();
+			}
+
+			// cout << "kbatch of size " << topNodes.size() << " done" << endl;
+
+			// add all to open
+			for (size_t i = 0; i < topNodes.size(); i++) {
+				Node* n = topNodes[i];
 				State buf, &state = d.unpack(buf, n->state);
 
-				if (d.isgoal(state)) { // while getting k nodes, if goal is found, break out of the for loop
-					solpath<D, Node>(d, n, this->res);
-					goalFound = true;
-					break;
-				}
+				// cout << "Checking node with " << n->children.size() << " children" << endl;
+				for (Node* kid : n->children){
 
-				executingNodes.push_back(n);
-				std::thread t(&KBFS::expand, this, std::ref(d), n, std::ref(state));
-				threads.push_back(std::move(t));
-			}
-
-			if (goalFound) // if goal is found, break out of while loop
-				break;
-
-			for (size_t i = 0; i < threads.size(); i++) {
-				threads[i].join();
-			}
-			threads.clear();
-			for (size_t i = 0; i < executingNodes.size(); i++) {
-				Node *n = executingNodes[i];
-				for (size_t j = 0; j < n->children.size(); j++) {
-					Node *child = n->children[j];
-					unsigned long hash = child->state.hash(&d);
-					if(!closed.find(child->state, hash)){
-						closed.add(child);
-						open.push(child);
+					if (d.isgoal(state)) {
+						solpath<D, Node>(d, n, this->res);
+						tp.join();
+						found = true; // should break out of the outer while loop
+						break;
 					}
+
+					unsigned long hash = kid->state.hash(&d);
+					Node *dup = closed.find(kid->state, hash);
+					if (dup) {
+						this->res.dups++;
+						if (kid->g >= dup->g) { // kid is worse so don't bother
+							nodes->destruct(kid);
+							continue;
+						}
+						// Else, update existing duplicate with better path
+						bool isopen = open.mem(dup);
+						if (isopen)
+							open.pre_update(dup);
+						dup->f = dup->f - dup->g + kid->g;
+						dup->g = kid->g;
+						dup->parent = n;
+						dup->op = kid->op;
+						// dup->pop = e.revop; // I literally can't find what e.revop is
+						if (isopen) {
+							open.post_update(dup);
+						} else {
+							this->res.reopnd++;
+							open.push(dup);
+						}
+						nodes->destruct(kid);
+						continue;
+					}
+					// add to closed and open
+					// cout << "Adding a child to open" << endl;
+					closed.add(kid, hash);
+					open.push(kid);
 				}
 			}
+			// cout << "openlist size: " << open.size() << endl;
 		}
+		
 		this->finish();
+	}
+
+	void kbfsWorker(D &d, Node *n, State &state, size_t &completedCount){
+		expandAndStore(d, n, state);
+		completedCount++; // should increment when worker is done?
+		// cout << "kbfs worker completed. Current count completed: " << completedCount << endl;
 	}
 
 	virtual void reset() {
@@ -137,33 +191,33 @@ template <class D> struct KBFS : public SearchAlgorithm<D> { // what is a templa
 	}
 
 private:
-	void expand(D &d, Node *n, State &state) { // counts generated and expanded nodes and calls considerkid on each possible option for a child
+
+	void expandAndStore(D &d, Node *n, State &state) {
 		SearchAlgorithm<D>::res.expd++;
 
 		typename D::Operators ops(d, state);
 		for (unsigned int i = 0; i < ops.size(); i++) {
-			if (ops[i] == n->pop) // what is pop?
+			if (ops[i] == n->pop)
 				continue;
 			SearchAlgorithm<D>::res.gend++;
 
-			Node *parent = n;
-			Oper op = ops[i];
-
-			Node *kid = nodes->construct(); // gets child node of operation
+			Node *kid = nodes->construct(); // nodes->construct() is a function that returns a new node from the pool?
 			assert (kid);
+            Oper op = ops[i];
 			typename D::Edge e(d, state, op);
-			kid->g = parent->g + e.cost;
-			d.pack(kid->state, e.state); // packs the state of the child node
+			kid->g = n->g + e.cost;
+			d.pack(kid->state, e.state);
 
 			kid->f = kid->g + d.h(e.state);
-			kid->parent = parent;
+			kid->parent = n;
 			kid->op = op;
 			kid->pop = e.revop;
+			// closed.add(kid, hash);
 			n->children.push_back(kid);
+			// cout << "expandAndStore() :: Added child" << endl;
 		}
-		n->isWorking = 2; // sets parent node to done
 	}
-	
+
 	Node *init(D &d, State &s0) {
 		Node *n0 = nodes->construct();
 		d.pack(n0->state, s0);
