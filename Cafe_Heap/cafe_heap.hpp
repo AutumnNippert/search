@@ -7,65 +7,88 @@
 
 using handle_t = std::size_t;
 
-struct PrecomputeFlags{
-    std::atomic<bool> completed;
-    std::atomic<bool> reserved;
+// struct PrecomputeFlags{
+//     std::atomic<bool> completed;
+//     std::atomic<bool> reserved;
     
-    inline void zero(){
-        completed.store(false, std::memory_order_relaxed);
-        reserved.store(false, std::memory_order_relaxed);
-    }
+//     inline void zero(){
+//         completed.store(false, std::memory_order_relaxed);
+//         reserved.store(false, std::memory_order_relaxed);
+//     }
 
-    inline PrecomputeFlags(){
-        zero();
-    }
+//     inline PrecomputeFlags(){
+//         zero();
+//     }
 
-    inline bool reserve(){ // for worker thread
-        bool expected = false;
-        return reserved.compare_exchange_strong(expected, true, std::memory_order_acq_rel, std::memory_order_acquire);
-    }
+//     inline bool reserve(){ // for worker thread
+//         bool expected = false;
+//         return reserved.compare_exchange_strong(expected, true, std::memory_order_acq_rel, std::memory_order_acquire);
+//     }
 
-    inline void set_completed(){ // for worker thread
-        completed.store(true, std::memory_order_release);
-    }
+//     inline void set_completed(){ // for worker thread
+//         completed.store(true, std::memory_order_release);
+//     }
 
-    inline bool is_completed(){ // for main thread
-        return completed.load(std::memory_order_acquire);
-    }
+//     inline bool is_completed(){ // for main thread
+//         return completed.load(std::memory_order_acquire);
+//     }
 
-    inline friend std::ostream& operator<<(std::ostream& stream, const PrecomputeFlags& flag){
-        stream << flag.reserved << flag.completed;
-        return stream;
-    }
-};
+//     inline friend std::ostream& operator<<(std::ostream& stream, const PrecomputeFlags& flag){
+//         stream << flag.reserved << flag.completed;
+//         return stream;
+//     }
+// };
 
 template <typename Node_t, typename Compare>
 struct HeapNode{
     Node_t search_node;  // the usual search node: {state, g, f, parent...}
-    std::vector<Node_t> * precomputed_successors;  // array of precomputed successors 
+    std::atomic<Node_t *> precomputed_successors;  // array of precomputed successors
+    std::size_t n_precomputed_successors; 
     handle_t handle;
-    PrecomputeFlags flags; // precomputation flags
+    std::atomic<bool> reserved;
 
     constexpr HeapNode(){};
 
-    inline HeapNode(const Node_t& node, handle_t h):search_node(node),precomputed_successors(nullptr),handle(h),flags(){}
-    
-    constexpr HeapNode& operator=(HeapNode&& other){
-        search_node = std::move(other.search_node);
-        precomputed_successors = std::move(other.precomputed_successors);
-        handle = std::move(other.precomputed_successors);
-        flags = std::move(other.flags);
-        return *this;
+
+    inline void zero(){  // Main thread only!
+        n_precomputed_successors = 0;
+        precomputed_successors.store(nullptr, std::memory_order_relaxed);
+        reserved.store(false, std::memory_order_relaxed);  // something else should release
     }
 
-    constexpr ~HeapNode(){
-        if(precomputed_successors != nullptr){
-            delete[] precomputed_successors;
-        }
+    inline bool reserve(){ // worker thread only
+        bool expected = false;
+        return reserved.compare_exchange_strong(expected, true, std::memory_order_acq_rel, std::memory_order_acquire);
     }
+
+
+    inline void set_completed(Node_t * pre_array, std::size_t n){ // worker thread only
+        n_precomputed_successors = n;
+        precomputed_successors.store(pre_array, std::memory_order_release);
+    }
+
+    inline bool is_completed() const{ // for main thread only
+        return precomputed_successors.load(std::memory_order_acquire) != nullptr;
+    }
+
+
+    inline HeapNode(const Node_t& node, handle_t h):search_node(node),handle(h){
+        zero();
+    }
+
+    
+    
+    // constexpr HeapNode& operator=(HeapNode&& other){
+    //     search_node = std::move(other.search_node);
+    //     precomputed_successors = std::move(other.precomputed_successors);
+    //     n_precomputed_successors = std::move(other.n_precomputed_successors);
+    //     handle = std::move(other.precomputed_successors);
+    //     flags = std::move(other.flags);
+    //     return *this;
+    // }
 
     inline friend std::ostream& operator<<(std::ostream& stream, const HeapNode<Node_t, Compare>& heap_node){
-        stream << "<" << heap_node.search_node << " " << heap_node.flags << " " << heap_node.handle << ">";
+        stream << "<" << heap_node.search_node << " " << heap_node.reserved <<" "<< heap_node.is_completed() << " " << heap_node.handle << ">";
         return stream;
     }
 };
@@ -213,8 +236,7 @@ class CafeMinBinaryHeap{
         inline void push(HeapNode<Node_t, Compare> * node){
             std::size_t s = size.load(std::memory_order_relaxed);
             node->handle = s;
-            node->flags.zero();
-            node->precomputed_successors = nullptr;
+            node->zero();
             _data[s].store(node, std::memory_order_relaxed);
             pull_up(s);
             size.store(++s, std::memory_order_release); 
