@@ -111,7 +111,7 @@ private:
 
 			Node *kid = nodes->construct(); // nodes->construct() is a function that returns a new node from the pool?
 			assert (kid);
-            Oper op = ops[i];
+                        Oper op = ops[i];
 			typename D::Edge e(d, state, op);
 			kid->g = n->g + e.cost;
 			d.pack(kid->state, e.state);
