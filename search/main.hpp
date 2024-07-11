@@ -143,8 +143,8 @@ template<class D> SearchAlgorithm<D> *getsearch(int argc, const char *argv[]) {
 		return new UniformCost<D>(argc, argv);
 	else if (strcmp(argv[1], "naive-cafe") == 0)
 		return new Naive_CAFE<D>(argc, argv);
-	// else if (strcmp(argv[1], "cafe") == 0)
-	// 	return new CAFE<D>(argc, argv);
+	else if (strcmp(argv[1], "cafe") == 0)
+		return new CAFE<D>(argc, argv);
 	else if (strcmp(argv[1], "kbfs") == 0)
 		return new KBFS<D>(argc, argv);
 
