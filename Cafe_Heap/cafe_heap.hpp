@@ -86,12 +86,11 @@ constexpr handle_t right_child(handle_t i){
     return 2*i + 2;
 }
 
-
-
 template <typename Node_t, typename Compare>
 class CafeMinBinaryHeap{
     private:
         std::size_t _capacity;  // size of array
+        std::atomic<std::size_t> size;       // size of heap 
         std::atomic<HeapNode<Node_t, Compare> *> * _data; // of atomic pointers to nodes
         
 
@@ -149,9 +148,7 @@ class CafeMinBinaryHeap{
             }
         }
 
-    public:
-        std::atomic<std::size_t> size;       // size of heap        
-
+    public:       
         inline CafeMinBinaryHeap(std::size_t capacity):_capacity(capacity){
             // setup heap before workers!
             _data = new std::atomic<HeapNode<Node_t, Compare> *>[capacity];
