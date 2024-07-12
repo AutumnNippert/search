@@ -10,7 +10,7 @@ using handle_t = std::size_t;
 template <typename Node_t, typename Compare>
 struct HeapNode{
     private: 
-        std::atomic<Node_t *> precomputed_successors;  // array of precomputed successors
+        std::atomic<HeapNode<Node_t, Compare> *> precomputed_successors;  // array of precomputed successors
         std::size_t n_precomputed_successors;
         std::atomic<bool> reserved;
     public:
