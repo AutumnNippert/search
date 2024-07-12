@@ -39,6 +39,11 @@ struct HeapNode{
             return precomputed_successors.load(std::memory_order_acquire) != nullptr;
         }
 
+        inline std::pair<HeapNode<Node_t, Compare> *, std::size_t> get_successors() const{ // main thread only, check is_completed first
+            assert(is_completed());
+            return std::make_pair(precomputed_successors.load(std::memory_order_acquire), n_precomputed_successors);
+        }
+
         inline HeapNode(const Node_t& node, handle_t h):search_node(node),handle(h){
             zero();
         }
