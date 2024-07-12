@@ -55,7 +55,7 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 	};
 
 	struct NodeComp{
-		bool operator()(const Node& lhs, const Node& rhs){
+		bool operator()(const Node& lhs, const Node& rhs) const{
 			return Node::prio(&lhs) < Node::prio(&rhs);
 		}
 	};
@@ -99,44 +99,29 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 			}
 
 			expand(d, hn, state);
-			typename D::Edge e(d, n->state, n->op);
+			typename D::Edge e(d, state, n->op);
 
-			for (HeapNode<Node, NodeComp>* kid : &(hn->precomputed_successors)){
+			for (auto kid : &(hn->precomputed_successors)){
 				
 				unsigned long hash = kid->state.hash(&d);
 				HeapNode<Node, NodeComp> *dup_hn = closed.find(kid->state, hash);
-				Node *dup = &(dup_hn->search_node);
-				if (dup) {
+				if (Node *dup = &(dup_hn->search_node)) {
 					this->res.dups++;
 					if (kid->g >= dup->g) { // kid is worse so don't bother
 						// nodes->destruct(kid);
-						// WE SHALL WASTE RAM MUAHAHAHA
 						continue;
 					}
-					// Else, update existing duplicate with better path
-					// bool isopen = open.mem(dup);
-					// if (isopen)
-					// 	open.pre_update(dup);
 					dup->f = dup->f - dup->g + kid->g;
 					dup->g = kid->g;
 					dup->parent = n;
 					dup->op = kid->op;
 					dup->pop = e.revop;
-					// if (isopen) {
-					// 	open.post_update(dup);
-					// } else {
-					// 	this->res.reopnd++;
-					// 	open.push(dup);
-					// }
 					// nodes->destruct(kid);
 					open.decrease_key(dup_hn->handle);
 					continue;
 				}
-				// add to closed and open
-				// cout << "Adding a child to open" << endl;
 				closed.add(kid, hash);
-
-				open.push(kid); // This line makes me sad
+				open.push(kid);
 			}
 		}
 		this->finish();
@@ -174,7 +159,6 @@ private:
 				continue;
 			
 			SearchAlgorithm<D>::res.gend++;
-
 			Node * kid = &(successors[i].search_node);	
 			assert (kid);
 			successor_count++;
@@ -184,39 +168,10 @@ private:
 			kid->g = n->g + e.cost;
 			d.pack(kid->state, e.state);
 
-			// unsigned long hash = kid->state.hash(&d);
-			// Node *dup = closed.find(kid->state, hash);
-			// if (dup) {
-			// 	this->res.dups++;
-			// 	if (kid->g >= dup->g) {
-			// 		nodes->destruct(kid);
-			// 		continue;
-			// 	}
-			// 	bool isopen = open.mem(dup);
-			// 	if (isopen)
-			// 		open.pre_update(dup);
-			// 	dup->f = dup->f - dup->g + kid->g;
-			// 	dup->g = kid->g;
-			// 	dup->parent = n;
-			// 	dup->op = op;
-			// 	dup->pop = e.revop;
-			// 	if (isopen) {
-			// 		open.post_update(dup);
-			// 	} else {
-			// 		this->res.reopnd++;
-			// 		open.push(dup);
-			// 	}
-			// 	nodes->destruct(kid);
-			// 	continue;
-			// }
-
 			kid->f = kid->g + d.h(e.state);
 			kid->parent = n;
 			kid->op = op;
 			kid->pop = e.revop;
-			// closed.add(kid, hash);
-
-			// open.push(kid);
 		}
 		hn->flags->set_completed();
 	}
