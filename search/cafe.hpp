@@ -72,7 +72,7 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 	};
 
 	CAFE(int argc, const char *argv[]) :
-		SearchAlgorithm<D>(argc, argv), closed(30000001) {
+		SearchAlgorithm<D>(argc, argv), open(OPEN_LIST_SIZE), closed(30000001) {
 		nodes = new NodePool<Node, NodeComp>(OPEN_LIST_SIZE);
 	}
 
@@ -89,8 +89,8 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 		open.push(n0);
 
 		while (!open.empty() && !SearchAlgorithm<D>::limit()) {
-			const HeapNode<Node, NodeComp>*hn = open.top(); // does not get or pop
-			Node* n = hn->search_node;
+			HeapNode<Node, NodeComp>* hn = open.get(0); // does not get or pop
+			Node* n = &(hn->search_node);
 			State buf, &state = d.unpack(buf, n->state);
 
 			if (d.isgoal(state)) {
@@ -101,13 +101,11 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 			expand(d, hn, state);
 			typename D::Edge e(d, n->state, n->op);
 
-			for (Node* kid : n->children){
-				// Create a heap node version of the child
-				HeapNode<Node, NodeComp>*hn = nodes->reserve(1);
-				hn->search_node = kid;
+			for (HeapNode<Node, NodeComp>* kid : &(hn->precomputed_successors)){
 				
 				unsigned long hash = kid->state.hash(&d);
-				Node *dup = closed.find(kid->state, hash);
+				HeapNode<Node, NodeComp> *dup_hn = closed.find(kid->state, hash);
+				Node *dup = &(dup_hn->search_node);
 				if (dup) {
 					this->res.dups++;
 					if (kid->g >= dup->g) { // kid is worse so don't bother
@@ -131,14 +129,14 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 					// 	open.push(dup);
 					// }
 					// nodes->destruct(kid);
-					open->decrease_key(dup->openind);
+					open.decrease_key(dup_hn->handle);
 					continue;
 				}
 				// add to closed and open
 				// cout << "Adding a child to open" << endl;
 				closed.add(kid, hash);
 
-				hn->handle = open.push(hn);
+				open.push(kid); // This line makes me sad
 			}
 		}
 		this->finish();
@@ -146,7 +144,7 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 
 	virtual void reset() {
 		SearchAlgorithm<D>::reset();
-		open.clear();
+		// open.clear();
 		closed.clear();
 		delete nodes;
 		nodes = new NodePool<Node, NodeComp>(OPEN_LIST_SIZE);
@@ -155,7 +153,7 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 	virtual void output(FILE *out) {
 		SearchAlgorithm<D>::output(out);
 		closed.prstats(stdout, "closed ");
-		dfpair(stdout, "open list type", "%s", open.kind());
+		// dfpair(stdout, "open list type", "%s", open.kind()); // wtf is this
 		dfpair(stdout, "node size", "%u", sizeof(Node));
 	}
 
@@ -164,16 +162,23 @@ private:
 	void expand(D& d, HeapNode<Node, NodeComp> * hn, State& state) {
 		SearchAlgorithm<D>::res.expd++;
 
-		Node * n = hn->search_node;
+		Node * n = &(hn->search_node);
 
 		typename D::Operators ops(d, state);
+
+		auto successors = nodes->reserve(ops.size());
+		size_t successor_count = 0;
+
 		for (unsigned int i = 0; i < ops.size(); i++) {
 			if (ops[i] == n->pop)
 				continue;
+			
 			SearchAlgorithm<D>::res.gend++;
 
-			Node * kid = nodes->construct(); // nodes->construct() is a function that returns a new node from the pool?
+			Node * kid = &(successors[i].search_node);	
 			assert (kid);
+			successor_count++;
+			
 			Oper op = ops[i];
 			typename D::Edge e(d, state, op);
 			kid->g = n->g + e.cost;
@@ -212,14 +217,13 @@ private:
 			// closed.add(kid, hash);
 
 			// open.push(kid);
-			hn->precomputed_successors.push_back(kid);
 		}
-		hn->set_completed();
+		hn->flags->set_completed();
 	}
 
 	HeapNode<Node, NodeComp> * init(D &d, State &s0) {
 		HeapNode<Node, NodeComp> * hn0 = nodes->reserve(1);
-		Node * n0 = hn0->search_node;
+		Node* n0 = &(hn0->search_node);
 		d.pack(n0->state, s0);
 		n0->g = Cost(0);
 		n0->f = d.h(s0);
