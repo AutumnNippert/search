@@ -66,7 +66,7 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 			return Ops::key(n);
 		}
 
-		static ClosedEntry<HeapNode, D>& closedentry(Node *n){
+		static ClosedEntry<HeapNode, D>& closedentry(HeapNode *n){
 			return Ops::closedentry(n);
 		}
 	};
@@ -89,7 +89,7 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 		open.push(n0);
 
 		while (!open.empty() && !SearchAlgorithm<D>::limit()) {
-			HeapNode<Node, NodeComp>* hn = open.get(0); // does not get or pop
+			HeapNode<Node, NodeComp>* hn = open.get(0);
 			Node* n = &(hn->search_node);
 			State buf, &state = d.unpack(buf, n->state);
 
@@ -101,8 +101,12 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 			expand(d, hn, state);
 			typename D::Edge e(d, state, n->op);
 
-			for (auto kid : &(hn->precomputed_successors)){
-				
+			auto successor_ret = hn->get_successors();
+			HeapNode<Node, NodeComp>* successors = successor_ret.first;
+			size_t n_precomputed_successors = successor_ret.second;
+			for (unsigned int i = 0; i < n_precomputed_successors; i++) {
+				HeapNode<Node, NodeComp>* successor = &(successors[i]);
+				Node *kid = &(successor->search_node);
 				unsigned long hash = kid->state.hash(&d);
 				HeapNode<Node, NodeComp> *dup_hn = closed.find(kid->state, hash);
 				if (Node *dup = &(dup_hn->search_node)) {
@@ -120,8 +124,8 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 					open.decrease_key(dup_hn->handle);
 					continue;
 				}
-				closed.add(kid, hash);
-				open.push(kid);
+				closed.add(successor, hash);
+				open.push(successor);
 			}
 		}
 		this->finish();
@@ -138,7 +142,7 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 	virtual void output(FILE *out) {
 		SearchAlgorithm<D>::output(out);
 		closed.prstats(stdout, "closed ");
-		// dfpair(stdout, "open list type", "%s", open.kind()); // wtf is this
+		// dfpair(stdout, "open list type", "%s", open.kind());
 		dfpair(stdout, "node size", "%u", sizeof(Node));
 	}
 
@@ -173,7 +177,7 @@ private:
 			kid->op = op;
 			kid->pop = e.revop;
 		}
-		hn->flags->set_completed();
+		// hn->set_completed();
 	}
 
 	HeapNode<Node, NodeComp> * init(D &d, State &s0) {
