@@ -11,19 +11,22 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 	typedef typename D::PackedState PackedState;
 	typedef typename D::Cost Cost;
 	typedef typename D::Oper Oper;
-	
+
+	struct NodeComp;
+
 	struct Node {
-		ClosedEntry<Node, D> closedent;
-		int openind;
+		ClosedEntry<HeapNode<Node, NodeComp>, D> closedent;
+		//int openind;
 		Node * parent;
 		PackedState state;
 		Oper op, pop;
 		Cost f, g;
 
-		Node() : openind(-1) {
-		}
+		// Node() : openind(-1) {
+		// }
+		Node(){}
 
-		static ClosedEntry<Node, D> &closedentry(Node *n) {
+		static ClosedEntry<HeapNode<Node, NodeComp>, D> &closedentry(Node *n) {
 			return n->closedent;
 		}
 
@@ -31,13 +34,13 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 			return n->state;
 		}
 
-		static void setind(Node *n, int i) {
-			n->openind = i;
-		}
+		// static void setind(Node *n, int i) {
+		// 	n->openind = i;
+		// }
 
-		static int getind(const Node *n) {
-			return n->openind;
-		}
+		// static int getind(const Node *n) {
+		// 	return n->openind;
+		// }
 	
 		static bool pred(Node *a, Node *b) {
 			if (a->f == b->f)
@@ -63,11 +66,11 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 	template <typename HeapNode, typename Ops>
 	struct ClosedHelper{
 		static PackedState& key(HeapNode * n){
-			return Ops::key(n);
+			return Ops::key(&n->search_node);
 		}
 
 		static ClosedEntry<HeapNode, D>& closedentry(HeapNode *n){
-			return Ops::closedentry(n);
+			return Ops::closedentry(&n->search_node);
 		}
 	};
 
