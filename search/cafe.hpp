@@ -101,15 +101,15 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 				break;
 			}
 
-			expand(d, hn, state);
-			typename D::Edge e(d, state, n->op);
+			auto successor_ret = expand(d, hn, state);
+			// typename D::Edge e(d, state, n->op);
 
-			auto successor_ret = hn->get_successors();
 			HeapNode<Node, NodeComp>* successors = successor_ret.first;
 			size_t n_precomputed_successors = successor_ret.second;
 			for (unsigned int i = 0; i < n_precomputed_successors; i++) {
 				HeapNode<Node, NodeComp>* successor = &(successors[i]);
 				Node *kid = &(successor->search_node);
+				assert(kid);
 				unsigned long hash = kid->state.hash(&d);
 				HeapNode<Node, NodeComp> *dup_hn = closed.find(kid->state, hash);
 				if (Node *dup = &(dup_hn->search_node)) {
@@ -122,7 +122,7 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 					dup->g = kid->g;
 					dup->parent = n;
 					dup->op = kid->op;
-					dup->pop = e.revop;
+					// dup->pop = e.revop;
 					// nodes->destruct(kid);
 					open.decrease_key(dup_hn->handle);
 					continue;
@@ -151,7 +151,7 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 
 private:
 
-	void expand(D& d, HeapNode<Node, NodeComp> * hn, State& state) {
+	std::pair<HeapNode<Node, NodeComp> *, std::size_t> expand(D& d, HeapNode<Node, NodeComp> * hn, State& state) {
 		SearchAlgorithm<D>::res.expd++;
 
 		Node * n = &(hn->search_node);
@@ -181,6 +181,7 @@ private:
 			kid->pop = e.revop;
 		}
 		// hn->set_completed();
+		return std::make_pair(successors, successor_count);
 	}
 
 	HeapNode<Node, NodeComp> * init(D &d, State &s0) {
