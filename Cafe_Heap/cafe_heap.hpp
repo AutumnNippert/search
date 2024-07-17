@@ -70,6 +70,7 @@ class NodePool{ // NOT THREAD SAFE ONE PER THREAD
         }
 
         HeapNode<Node_t, Compare> * reserve(std::size_t n){
+            assert(_size + n <= _capacity);
             HeapNode<Node_t, Compare> * retval = _nodes + _size;
             _size += n;
             return retval;

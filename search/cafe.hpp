@@ -2,8 +2,9 @@
 #pragma once
 #include "../search/search.hpp"
 #include "../Cafe_Heap/cafe_heap.hpp"
+#include <unistd.h>
 
-#define OPEN_LIST_SIZE 100000000
+#define OPEN_LIST_SIZE 200000000
 
 template <class D> struct CAFE : public SearchAlgorithm<D> {
 
@@ -55,6 +56,10 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 		static Cost tieprio(const Node *n) {
 			return n->g;
 		}
+
+		static void printNode(Node *n, std::ostream &o) {
+			o << "[g:" << n->g << ", f:" << n->f << ", op:" << n->op << ", pop:" << n->pop << "]" << std::endl;
+		}
 	};
 
 	struct NodeComp{
@@ -94,6 +99,9 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 		while (!open.empty() && !SearchAlgorithm<D>::limit()) {
 			HeapNode<Node, NodeComp>* hn = open.get(0);
 			Node* n = &(hn->search_node);
+			std::cout << "Popped Node: ";
+			Node::printNode(n, std::cout);
+			sleep(1);
 			State buf, &state = d.unpack(buf, n->state);
 
 			if (d.isgoal(state)) {
@@ -111,22 +119,21 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 				assert(kid);
 				unsigned long hash = kid->state.hash(&d);
 				HeapNode<Node, NodeComp> *dup_hn = closed.find(kid->state, hash);
-				if (dup_hn) { // if its in closed, check if dup ois better
-					if (Node *dup = &(dup_hn->search_node)) {
-						this->res.dups++;
-						if (kid->g >= dup->g) { // kid is worse so don't bother
-							// nodes->destruct(kid);
-							continue;
-						}
-						dup->f = dup->f - dup->g + kid->g;
-						dup->g = kid->g;
-						dup->parent = n;
-						dup->op = kid->op;
-						dup->pop = kid->pop;
+				if (dup_hn != nullptr) { // if its in closed, check if dup ois better
+					Node &dup = dup_hn->search_node;
+					this->res.dups++;
+					if (kid->g >= dup.g) { // kid is worse so don't bother
 						// nodes->destruct(kid);
-						open.decrease_key(dup_hn->handle);
 						continue;
 					}
+					dup.f = dup.f - dup.g + kid->g;
+					dup.g = kid->g;
+					dup.parent = n;
+					dup.op = kid->op;
+					dup.pop = kid->pop;
+					// nodes->destruct(kid);
+					open.decrease_key(dup_hn->handle);
+					continue;
 				}
 				closed.add(successor, hash);
 				open.push(successor);
@@ -159,6 +166,7 @@ private:
 
 		typename D::Operators ops(d, state);
 
+		
 		auto successors = nodes->reserve(ops.size());
 		size_t successor_count = 0;
 
@@ -168,9 +176,8 @@ private:
 			
 			SearchAlgorithm<D>::res.gend++;
 			Node * kid = &(successors[i].search_node);	
-			assert (kid);
+			assert (kid != nullptr);
 			successor_count++;
-			
 			typename D::Edge e(d, state, ops[i]);
 			kid->g = n->g + e.cost;
 			d.pack(kid->state, e.state);
@@ -179,8 +186,12 @@ private:
 			kid->parent = n;
 			kid->op = ops[i];
 			kid->pop = e.revop;
+			
+			std::cout << "Generated Node: ";
+			Node::printNode(kid, std::cout);
 		}
 		// hn->set_completed();
+		// print generated node: node
 		return std::make_pair(successors, successor_count);
 	}
 
