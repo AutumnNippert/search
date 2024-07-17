@@ -60,6 +60,11 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 		static void printNode(Node *n, std::ostream &o) {
 			o << "[g:" << n->g << ", f:" << n->f << ", op:" << n->op << ", pop:" << n->pop << "]" << std::endl;
 		}
+
+		inline friend std::ostream& operator<<(std::ostream& stream, const Node& node){
+			stream << "[g:" << node.g << ", f:" << node.f << ", op:" << node.op << ", pop:" << node.pop << "]";
+			return stream;
+		}
 	};
 
 	struct NodeComp{
@@ -96,7 +101,9 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 		closed.add(n0);
 		open.push(n0);
 
-		while (!open.empty() && !SearchAlgorithm<D>::limit()) {
+		while (!open.empty() && !SearchAlgorithm<D>::limit()) {	
+			std::cout << "Open: " << open << std::endl;
+
 			HeapNode<Node, NodeComp>* hn = open.get(0);
 			Node* n = &(hn->search_node);
 			std::cout << "Popped Node: ";
@@ -169,6 +176,7 @@ private:
 		
 		auto successors = nodes->reserve(ops.size());
 		size_t successor_count = 0;
+		std::cout << "Reserving: " << ops.size() << " successors" << std::endl;
 
 		for (unsigned int i = 0; i < ops.size(); i++) {
 			if (ops[i] == n->pop)
@@ -192,6 +200,7 @@ private:
 		}
 		// hn->set_completed();
 		// print generated node: node
+		std::cout << "Returning " << successor_count << " successors" << std::endl;
 		return std::make_pair(successors, successor_count);
 	}
 
