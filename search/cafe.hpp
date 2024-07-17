@@ -102,7 +102,6 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 			}
 
 			auto successor_ret = expand(d, hn, state);
-			// typename D::Edge e(d, state, n->op);
 
 			HeapNode<Node, NodeComp>* successors = successor_ret.first;
 			size_t n_precomputed_successors = successor_ret.second;
@@ -112,20 +111,22 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 				assert(kid);
 				unsigned long hash = kid->state.hash(&d);
 				HeapNode<Node, NodeComp> *dup_hn = closed.find(kid->state, hash);
-				if (Node *dup = &(dup_hn->search_node)) {
-					this->res.dups++;
-					if (kid->g >= dup->g) { // kid is worse so don't bother
+				if (dup_hn) { // if its in closed, check if dup ois better
+					if (Node *dup = &(dup_hn->search_node)) {
+						this->res.dups++;
+						if (kid->g >= dup->g) { // kid is worse so don't bother
+							// nodes->destruct(kid);
+							continue;
+						}
+						dup->f = dup->f - dup->g + kid->g;
+						dup->g = kid->g;
+						dup->parent = n;
+						dup->op = kid->op;
+						dup->pop = kid->pop;
 						// nodes->destruct(kid);
+						open.decrease_key(dup_hn->handle);
 						continue;
 					}
-					dup->f = dup->f - dup->g + kid->g;
-					dup->g = kid->g;
-					dup->parent = n;
-					dup->op = kid->op;
-					// dup->pop = e.revop;
-					// nodes->destruct(kid);
-					open.decrease_key(dup_hn->handle);
-					continue;
 				}
 				closed.add(successor, hash);
 				open.push(successor);
@@ -170,14 +171,13 @@ private:
 			assert (kid);
 			successor_count++;
 			
-			Oper op = ops[i];
-			typename D::Edge e(d, state, op);
+			typename D::Edge e(d, state, ops[i]);
 			kid->g = n->g + e.cost;
 			d.pack(kid->state, e.state);
 
 			kid->f = kid->g + d.h(e.state);
 			kid->parent = n;
-			kid->op = op;
+			kid->op = ops[i];
 			kid->pop = e.revop;
 		}
 		// hn->set_completed();
