@@ -4,7 +4,7 @@
 #include "../Cafe_Heap/cafe_heap.hpp"
 #include <unistd.h>
 
-#define OPEN_LIST_SIZE 200000000
+#define OPEN_LIST_SIZE 2000000
 
 template <class D> struct CAFE : public SearchAlgorithm<D> {
 
@@ -105,10 +105,11 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 			std::cout << "Open: " << open << std::endl;
 
 			HeapNode<Node, NodeComp>* hn = open.get(0);
+			open.pop();
 			Node* n = &(hn->search_node);
 			std::cout << "Popped Node: ";
 			Node::printNode(n, std::cout);
-			sleep(1);
+			//sleep(1);
 			State buf, &state = d.unpack(buf, n->state);
 
 			if (d.isgoal(state)) {
@@ -125,8 +126,13 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 				Node *kid = &(successor->search_node);
 				assert(kid);
 				unsigned long hash = kid->state.hash(&d);
+				hash--;
+				std::cerr << kid;
+				std::cerr << " " << &kid->state;
+				std::cerr << " " << hash << "\n";
 				HeapNode<Node, NodeComp> *dup_hn = closed.find(kid->state, hash);
 				if (dup_hn != nullptr) { // if its in closed, check if dup ois better
+					dup_hn = open.get(dup_hn->handle);
 					Node &dup = dup_hn->search_node;
 					this->res.dups++;
 					if (kid->g >= dup.g) { // kid is worse so don't bother
