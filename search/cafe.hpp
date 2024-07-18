@@ -2,6 +2,7 @@
 #pragma once
 #include "../search/search.hpp"
 #include "../Cafe_Heap/cafe_heap.hpp"
+#include <boost/unordered/unordered_map.hpp>
 #include <unistd.h>
 
 #define OPEN_LIST_SIZE 2000000
@@ -16,33 +17,17 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 	struct NodeComp;
 
 	struct Node {
-		ClosedEntry<HeapNode<Node, NodeComp>, D> closedent;
-		//int openind;
 		Node * parent;
 		PackedState state;
 		Oper op, pop;
 		Cost f, g;
 
-		// Node() : openind(-1) {
-		// }
 		Node(){}
-
-		static ClosedEntry<HeapNode<Node, NodeComp>, D> &closedentry(Node *n) {
-			return n->closedent;
-		}
 
 		static PackedState &key(Node *n) {
 			return n->state;
 		}
 
-		// static void setind(Node *n, int i) {
-		// 	n->openind = i;
-		// }
-
-		// static int getind(const Node *n) {
-		// 	return n->openind;
-		// }
-	
 		static bool pred(Node *a, Node *b) {
 			if (a->f == b->f)
 				return a->g > b->g;
@@ -73,19 +58,8 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 		}
 	};
 
-	template <typename HeapNode, typename Ops>
-	struct ClosedHelper{
-		static PackedState& key(HeapNode * n){
-			return Ops::key(&n->search_node);
-		}
-
-		static ClosedEntry<HeapNode, D>& closedentry(HeapNode *n){
-			return Ops::closedentry(&n->search_node);
-		}
-	};
-
 	CAFE(int argc, const char *argv[]) :
-		SearchAlgorithm<D>(argc, argv), open(OPEN_LIST_SIZE), closed(30000001) {
+		SearchAlgorithm<D>(argc, argv), open(OPEN_LIST_SIZE)/*, closed(30000001)*/ {
 		nodes = new NodePool<Node, NodeComp>(OPEN_LIST_SIZE);
 	}
 
@@ -95,10 +69,10 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 
 	void search(D &d, typename D::State &s0) {
 		this->start();
-		closed.init(d);
 
 		HeapNode<Node, NodeComp> * n0 = init(d, s0);
-		closed.add(n0);
+		unsigned long hash = n0->search_node.state.hash(&d);
+		closed[hash] = n0;
 		open.push(n0);
 
 		while (!open.empty() && !SearchAlgorithm<D>::limit()) {	
@@ -126,11 +100,7 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 				Node *kid = &(successor->search_node);
 				assert(kid);
 				unsigned long hash = kid->state.hash(&d);
-				hash--;
-				std::cerr << kid;
-				std::cerr << " " << &kid->state;
-				std::cerr << " " << hash << "\n";
-				HeapNode<Node, NodeComp> *dup_hn = closed.find(kid->state, hash);
+				HeapNode<Node, NodeComp> *dup_hn = closed.find(hash);
 				if (dup_hn != nullptr) { // if its in closed, check if dup ois better
 					dup_hn = open.get(dup_hn->handle);
 					Node &dup = dup_hn->search_node;
@@ -148,7 +118,7 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 					open.decrease_key(dup_hn->handle);
 					continue;
 				}
-				closed.add(successor, hash);
+				closed[hash] = successor;
 				open.push(successor);
 			}
 		}
@@ -157,7 +127,7 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 
 	virtual void reset() {
 		SearchAlgorithm<D>::reset();
-		// open.clear();
+		open.clear();
 		closed.clear();
 		delete nodes;
 		nodes = new NodePool<Node, NodeComp>(OPEN_LIST_SIZE);
@@ -165,7 +135,7 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 
 	virtual void output(FILE *out) {
 		SearchAlgorithm<D>::output(out);
-		closed.prstats(stdout, "closed ");
+		// closed.prstats(stdout, "closed ");
 		// dfpair(stdout, "open list type", "%s", open.kind());
 		dfpair(stdout, "node size", "%u", sizeof(Node));
 	}
@@ -222,6 +192,6 @@ private:
 	}
 
 	CafeMinBinaryHeap<Node, NodeComp> open;
- 	ClosedList<ClosedHelper<HeapNode<Node, NodeComp>, Node>, HeapNode<Node, NodeComp>, D> closed;
+	typedef boost::unordered_map<unsigned long, HeapNode<Node, NodeComp>> closed; // Instead of custom closed list
 	NodePool<Node, NodeComp> *nodes;
 };
