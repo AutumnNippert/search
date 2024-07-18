@@ -1,7 +1,9 @@
 // Copyright © 2013 the Search Authors under the MIT license. See AUTHORS for the list of authors.
 #pragma once
+#include <boost/unordered/unordered_flat_map.hpp>
 #include "../search/search.hpp"
 #include "../utils/pool.hpp"
+
 
 template <class D> struct AstarBasic : public SearchAlgorithm<D> {
 
@@ -9,6 +11,19 @@ template <class D> struct AstarBasic : public SearchAlgorithm<D> {
 	typedef typename D::PackedState PackedState;
 	typedef typename D::Cost Cost;
 	typedef typename D::Oper Oper;
+
+
+	struct StateEq{
+		inline bool operator()(const PackedState& s, const PackedState& o) const{
+			return s.eq(nullptr, o);
+		}
+	};
+
+	struct StateHasher{
+		inline unsigned long operator()(const PackedState& s) const{
+			return const_cast<PackedState&>(s).hash(nullptr);
+		}
+	};
 	
 	struct Node {
 		ClosedEntry<Node, D> closedent;
@@ -53,7 +68,7 @@ template <class D> struct AstarBasic : public SearchAlgorithm<D> {
 	};
 
 	AstarBasic(int argc, const char *argv[]) :
-		SearchAlgorithm<D>(argc, argv), closed(30000001) {
+		SearchAlgorithm<D>(argc, argv) {
 		nodes = new Pool<Node>();
 	}
 
@@ -63,10 +78,10 @@ template <class D> struct AstarBasic : public SearchAlgorithm<D> {
 
 	void search(D &d, typename D::State &s0) {
 		this->start();
-		closed.init(d);
+		//closed.init(d);
 
-		Node *n0 = init(d, s0);
-		closed.add(n0);
+		Node * n0 = init(d, s0);
+		closed.emplace(n0->state, n0);
 		open.push(n0);
 
 		while (!open.empty() && !SearchAlgorithm<D>::limit()) {
@@ -93,7 +108,7 @@ template <class D> struct AstarBasic : public SearchAlgorithm<D> {
 
 	virtual void output(FILE *out) {
 		SearchAlgorithm<D>::output(out);
-		closed.prstats(stdout, "closed ");
+		//closed.prstats(stdout, "closed ");
 		dfpair(stdout, "open list type", "%s", open.kind());
 		dfpair(stdout, "node size", "%u", sizeof(Node));
 	}
@@ -116,9 +131,10 @@ private:
 			kid->g = n->g + e.cost;
 			d.pack(kid->state, e.state);
 
-			unsigned long hash = kid->state.hash(&d);
-			Node *dup = closed.find(kid->state, hash);
-			if (dup) {
+			// unsigned long hash = kid->state.hash(&d);
+			auto dupl = closed.find(kid->state);
+			if (dupl != closed.end()) {
+				Node * dup = dupl->second;
 				this->res.dups++;
 				if (kid->g >= dup->g) {
 					nodes->destruct(kid);
@@ -146,13 +162,13 @@ private:
 			kid->parent = n;
 			kid->op = op;
 			kid->pop = e.revop;
-			closed.add(kid, hash);
+			closed.emplace(kid->state, kid);
 			open.push(kid);
 		}
 	}
 
 	Node *init(D &d, State &s0) {
-		Node *n0 = nodes->construct();
+		Node * n0 = nodes->construct();
 		d.pack(n0->state, s0);
 		n0->g = Cost(0);
 		n0->f = d.h(s0);
@@ -162,6 +178,7 @@ private:
 	}
 
 	OpenList<Node, Node, Cost> open;
- 	ClosedList<Node, Node, D> closed;
+ 	// ClosedList<Node, Node, D> closed;
+	boost::unordered_flat_map<PackedState, Node *, StateHasher, StateEq> closed;
 	Pool<Node> *nodes;
 };
