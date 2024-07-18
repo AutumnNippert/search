@@ -13,7 +13,7 @@ CC:=gcc
 
 AR:=ar
 
-FLAGS:=-Wall  -g -O3 -pthread
+FLAGS:=-Wall -O3 -pthread
 
 # GL_SILENCE_DEPRECATION silences opengl deprecation errors on osx.
 FLAGS +=-DGL_SILENCE_DEPRECATION
