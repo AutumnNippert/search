@@ -6,6 +6,8 @@ import subprocess
 
 algo1 = sys.argv[1]
 algo2 = sys.argv[2]
+folder = sys.argv[3]
+
 
 def parse_cpu_time(output):
     output = output.split("\n")
@@ -23,7 +25,7 @@ algo2_cum_time = 0.0
 for i in range(1, 101): # non inclusive
     print("Korf 4/4/" + str(i) + " --------------------")
 
-    command = "./15md_solver " + algo1 + " < tiles_instances/korf/4/4/" + str(i) + "> tmp"
+    command = "./15md_solver " + algo1 + " < " + folder + str(i) + "> tmp"
     output = result = subprocess.check_output(command, shell=True)
     f = open("tmp", "r")
     output = f.read() 
@@ -31,7 +33,7 @@ for i in range(1, 101): # non inclusive
     print(f"{algo1}: {cpu_time}")
     algo1_cum_time += cpu_time
 
-    command = "./15md_solver " + algo2 + " < tiles_instances/korf/4/4/" + str(i) + "> tmp"
+    command = "./15md_solver " + algo2 + " < " + folder + str(i) + "> tmp"
     output = result = subprocess.check_output(command, shell=True)
     f = open("tmp", "r")
     output = f.read() 
