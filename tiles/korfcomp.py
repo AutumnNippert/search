@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 # take input arg of name of algorithm
 
 import sys
@@ -22,7 +23,7 @@ algo2_cum_time = 0.0
 for i in range(1, 101): # non inclusive
     print("Korf 4/4/" + str(i) + " --------------------")
 
-    command = "./15md_solver " + algo1 + " < /home/aifs2/group/data/tiles_instances/korf/4/4/" + str(i) + "> tmp"
+    command = "./15md_solver " + algo1 + " < tiles_instances/korf/4/4/" + str(i) + "> tmp"
     output = result = subprocess.check_output(command, shell=True)
     f = open("tmp", "r")
     output = f.read() 
@@ -30,7 +31,7 @@ for i in range(1, 101): # non inclusive
     print(f"{algo1}: {cpu_time}")
     algo1_cum_time += cpu_time
 
-    command = "./15md_solver " + algo1 + " < /home/aifs2/group/data/tiles_instances/korf/4/4/" + str(i) + "> tmp"
+    command = "./15md_solver " + algo2 + " < tiles_instances/korf/4/4/" + str(i) + "> tmp"
     output = result = subprocess.check_output(command, shell=True)
     f = open("tmp", "r")
     output = f.read() 
