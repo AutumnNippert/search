@@ -3,6 +3,7 @@
 
 #include <vector>
 #include <boost/optional.hpp>
+#include <iostream>
 
 void fatal(const char*, ...);
 
@@ -139,6 +140,13 @@ public:
 		}
 
 		return i;
+	}
+
+	inline friend std::ostream& operator<<(std::ostream& stream, const BinHeap& heap){
+		for (unsigned int i = 0; i < heap.size(); i++){
+			stream << *heap.heap[i] << " ";
+		}
+		return stream;
 	}
 
 private:
