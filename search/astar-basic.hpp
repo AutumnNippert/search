@@ -65,6 +65,11 @@ template <class D> struct AstarBasic : public SearchAlgorithm<D> {
 		static Cost tieprio(Node *n) {
 			return n->g;
 		}
+
+		inline friend std::ostream& operator<<(std::ostream& stream, const Node& node){
+			stream << "[g:" << node.g << ", f:" << node.f << ", op:" << node.op << ", pop:" << node.pop << "]";
+			return stream;
+		}
 	};
 
 	AstarBasic(int argc, const char *argv[]) :
@@ -85,8 +90,11 @@ template <class D> struct AstarBasic : public SearchAlgorithm<D> {
 		open.push(n0);
 
 		while (!open.empty() && !SearchAlgorithm<D>::limit()) {
+			// Print open list
 			Node *n = open.pop();
 			State buf, &state = d.unpack(buf, n->state);
+			
+			std::cout << "Popped Node: " << *n << std::endl;
 
 			if (d.isgoal(state)) {
 				solpath<D, Node>(d, n, this->res);

@@ -5,7 +5,7 @@
 #include <boost/unordered/unordered_flat_map.hpp>
 #include <unistd.h>
 
-#define OPEN_LIST_SIZE 2000000
+#define OPEN_LIST_SIZE 20000000
 
 template <class D> struct CAFE : public SearchAlgorithm<D> {
 
@@ -84,18 +84,17 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 		this->start();
 
 		HeapNode<Node, NodeComp> * hn0 = init(d, s0);
-		closed.emplace(hn0->search_node->state, hn0);
+		closed.emplace(hn0->search_node.state, hn0);
 		open.push(hn0);
 
 		while (!open.empty() && !SearchAlgorithm<D>::limit()) {	
-			std::cout << "Open: " << open << std::endl;
-
+			std::cout << "Open: " << open;
+			
 			HeapNode<Node, NodeComp>* hn = open.get(0);
 			open.pop();
 			Node* n = &(hn->search_node);
 			std::cout << "Popped Node: ";
 			Node::printNode(n, std::cout);
-			//sleep(1);
 			State buf, &state = d.unpack(buf, n->state);
 
 			if (d.isgoal(state)) {
@@ -114,7 +113,6 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 				auto dup_it = closed.find(kid->state);
 				if (dup_it != closed.end()) { // if its in closed, check if dup ois better
 					HeapNode<Node, NodeComp> * dup_hn = dup_it->second;
-					dup_hn = open.get(dup_hn->handle);
 					Node &dup = dup_hn->search_node;
 					this->res.dups++;
 					if (kid->g >= dup.g) { // kid is worse so don't bother
@@ -131,6 +129,7 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 					continue;
 				}
 				closed.emplace(kid->state, successor);
+				// std::cout << "search(): Adding successor " << *kid << std::endl;
 				open.push(successor);
 			}
 		}
@@ -155,6 +154,8 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 private:
 
 	std::pair<HeapNode<Node, NodeComp> *, std::size_t> expand(D& d, HeapNode<Node, NodeComp> * hn, State& state) {
+		// std::cout << "Expand()" << std::endl;
+		// std::cout << "Open: " << open;
 		SearchAlgorithm<D>::res.expd++;
 
 		Node * n = &(hn->search_node);
@@ -164,14 +165,14 @@ private:
 		
 		auto successors = nodes->reserve(ops.size());
 		size_t successor_count = 0;
-		std::cout << "Reserving: " << ops.size() << " successors" << std::endl;
+		// std::cout << "Reserving: " << ops.size() << " successors" << std::endl;
 
 		for (unsigned int i = 0; i < ops.size(); i++) {
 			if (ops[i] == n->pop)
 				continue;
 			
 			SearchAlgorithm<D>::res.gend++;
-			Node * kid = &(successors[i].search_node);	
+			Node * kid = &(successors[successor_count].search_node);	
 			assert (kid != nullptr);
 			successor_count++;
 			typename D::Edge e(d, state, ops[i]);
@@ -183,12 +184,13 @@ private:
 			kid->op = ops[i];
 			kid->pop = e.revop;
 			
-			std::cout << "Generated Node: ";
-			Node::printNode(kid, std::cout);
+			// std::cout << "Generated Node: ";
+			// Node::printNode(kid, std::cout);
 		}
-		// hn->set_completed();
-		// print generated node: node
-		std::cout << "Returning " << successor_count << " successors" << std::endl;
+		// print each successor
+		// for (unsigned int i = 0; i < ops.size(); i++) {
+		// 	std::cout << "expand(): Viewing Successors " << i << ": " << successors[i].search_node << std::endl;
+		// }
 		return std::make_pair(successors, successor_count);
 	}
 
