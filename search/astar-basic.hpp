@@ -90,7 +90,7 @@ template <class D> struct AstarBasic : public SearchAlgorithm<D> {
 		open.push(n0);
 
 		while (!open.empty() && !SearchAlgorithm<D>::limit()) {
-			// Print open list
+			std::cout << "Open: " << open << std::endl;
 			Node *n = open.pop();
 			State buf, &state = d.unpack(buf, n->state);
 			
@@ -170,6 +170,7 @@ private:
 			kid->parent = n;
 			kid->op = op;
 			kid->pop = e.revop;
+			std::cout << "Adding successor " << *kid << std::endl;
 			closed.emplace(kid->state, kid);
 			open.push(kid);
 		}

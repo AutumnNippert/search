@@ -55,10 +55,6 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 			return n->g;
 		}
 
-		static void printNode(Node *n, std::ostream &o) {
-			o << "[g:" << n->g << ", f:" << n->f << ", op:" << n->op << ", pop:" << n->pop << "]" << std::endl;
-		}
-
 		inline friend std::ostream& operator<<(std::ostream& stream, const Node& node){
 			stream << "[g:" << node.g << ", f:" << node.f << ", op:" << node.op << ", pop:" << node.pop << "]";
 			return stream;
@@ -88,13 +84,12 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 		open.push(hn0);
 
 		while (!open.empty() && !SearchAlgorithm<D>::limit()) {	
-			std::cout << "Open: " << open;
+			std::cout << "Open: " << open << std::endl;
 			
 			HeapNode<Node, NodeComp>* hn = open.get(0);
 			open.pop();
 			Node* n = &(hn->search_node);
-			std::cout << "Popped Node: ";
-			Node::printNode(n, std::cout);
+			std::cout << "Popped Node: " << *n << std::endl;
 			State buf, &state = d.unpack(buf, n->state);
 
 			if (d.isgoal(state)) {
@@ -129,7 +124,7 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 					continue;
 				}
 				closed.emplace(kid->state, successor);
-				// std::cout << "search(): Adding successor " << *kid << std::endl;
+				std::cout << "search(): Adding successor " << *kid << std::endl;
 				open.push(successor);
 			}
 		}
@@ -184,11 +179,10 @@ private:
 			kid->op = ops[i];
 			kid->pop = e.revop;
 			
-			// std::cout << "Generated Node: ";
-			// Node::printNode(kid, std::cout);
+			// std::cout << "Generated Node: " << *kid << std::endl;
 		}
 		// print each successor
-		// for (unsigned int i = 0; i < ops.size(); i++) {
+		// for (unsigned int i = 0; i < successor_count; i++) {
 		// 	std::cout << "expand(): Viewing Successors " << i << ": " << successors[i].search_node << std::endl;
 		// }
 		return std::make_pair(successors, successor_count);
