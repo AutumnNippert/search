@@ -30,7 +30,7 @@ struct HeapNode{
             return reserved.compare_exchange_strong(expected, true, std::memory_order_acq_rel, std::memory_order_acquire);
         }
 
-        inline void set_completed(Node_t * pre_array, std::size_t n){ // Worker thread only
+        inline void set_completed(HeapNode<Node_t, Compare> * pre_array, std::size_t n){ // Worker thread only
             n_precomputed_successors = n;
             precomputed_successors.store(pre_array, std::memory_order_release);
         }

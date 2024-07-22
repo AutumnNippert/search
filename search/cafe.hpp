@@ -5,7 +5,11 @@
 #include <boost/unordered/unordered_flat_map.hpp>
 #include <unistd.h>
 
-#define OPEN_LIST_SIZE 20000000
+// For multithreading
+#include <thread>
+#include <stop_token>
+
+#define OPEN_LIST_SIZE 200000000
 
 template <class D> struct CAFE : public SearchAlgorithm<D> {
 
@@ -76,20 +80,44 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 		delete nodes;
 	}
 
+	void thread_speculate(D &d, stop_token token){
+		while(!token.stop_requested()){
+			HeapNode<Node, NodeComp> *hn = open.fetch_work();
+			if(hn == nullptr){
+				continue;
+			}
+
+			Node* n = &(hn->search_node);
+			State buf, &state = d.unpack(buf, n->state);
+
+			auto successor_ret = expand(d, hn, state);
+			hn->set_completed(successor_ret.first, successor_ret.second);
+		}
+	}
+
 	void search(D &d, typename D::State &s0) {
 		this->start();
+
+		size_t num_threads = 2;
+		std::vector<std::jthread> threads;
+		std::stop_source stop_source;
 
 		HeapNode<Node, NodeComp> * hn0 = init(d, s0);
 		closed.emplace(hn0->search_node.state, hn0);
 		open.push(hn0);
 
+		// Create threads after initial node is pushed
+		for (size_t i = 0; i < num_threads; i++){
+			threads.emplace_back(&CAFE::thread_speculate, this, std::ref(d), stop_source.get_token());
+		}
+
+		std::cerr << "Threads Created" << std::endl;
+
 		while (!open.empty() && !SearchAlgorithm<D>::limit()) {	
 			// std::cout << "Open: " << open << std::endl;
 			// std::cout << "Open Pull" << std::endl;
-			std::cerr << open << "\n";
 			HeapNode<Node, NodeComp>* hn = open.get(0);
 			open.pop();
-			std::cerr << "Expanded: " << *hn << "\n";
 			Node* n = &(hn->search_node);
 			State buf, &state = d.unpack(buf, n->state);
 
@@ -97,13 +125,19 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 
 			if (d.isgoal(state)) {
 				solpath<D, Node>(d, n, this->res);
+				stop_source.request_stop();
+				// wait for all jthreads to finish
+				for (auto& thread : threads){
+					thread.join();
+				}
 				break;
 			}
 
-			auto successor_ret = expand(d, hn, state);
+			auto successor_ret = (hn->is_completed()) ? hn->get_successors() : expand(d, hn, state);
 
 			HeapNode<Node, NodeComp>* successors = successor_ret.first;
 			size_t n_precomputed_successors = successor_ret.second;
+
 			for (unsigned int i = 0; i < n_precomputed_successors; i++) {
 				HeapNode<Node, NodeComp>* successor = &(successors[i]);
 				Node *kid = &(successor->search_node);
