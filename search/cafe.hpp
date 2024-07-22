@@ -6,6 +6,7 @@
 #include <unistd.h>
 
 // For multithreading
+#include <latch>
 #include <thread>
 #include <stop_token>
 
@@ -73,14 +74,18 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 
 	CAFE(int argc, const char *argv[]) :
 		SearchAlgorithm<D>(argc, argv), open(OPEN_LIST_SIZE)/*, closed(30000001)*/ {
-		nodes = new NodePool<Node, NodeComp>(OPEN_LIST_SIZE);
+		// nodes = new NodePool<Node, NodeComp>(OPEN_LIST_SIZE);
 	}
 
 	~CAFE() {
-		delete nodes;
+		// delete nodes;
 	}
 
-	void thread_speculate(D &d, stop_token token){
+	void thread_speculate(D &d, std::latch& start_latch, std::stop_token& token){
+		std::cout << "Thread Created. Allocating node pool..." << std::endl;
+		// node pool creatin
+		NodePool<Node, NodeComp> nodes(OPEN_LIST_SIZE);
+		start_latch.arrive_and_wait();
 		std::cout << "Thread Started" << std::endl;
 		while(!token.stop_requested()){
 			HeapNode<Node, NodeComp> *hn = open.fetch_work();
@@ -91,7 +96,7 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 			Node* n = &(hn->search_node);
 			State buf, &state = d.unpack(buf, n->state);
 
-			auto successor_ret = expand(d, hn, state);
+			auto successor_ret = expand(d, hn, nodes, state);
 			hn->set_completed(successor_ret.first, successor_ret.second);
 		}
 		std::cout << "Thread Stopped" << std::endl;
@@ -103,18 +108,27 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 		size_t speculated_nodes_expanded = 0;
 		size_t manual_expansions = 0;
 
-		size_t num_threads = 3;
+		size_t num_threads = 2;
 		std::vector<std::jthread> threads;
 		std::stop_source stop_source;
+		std::latch start_latch(num_threads + 1);
 
-		HeapNode<Node, NodeComp> * hn0 = init(d, s0);
+		NodePool<Node, NodeComp> nodes(OPEN_LIST_SIZE);
+
+		HeapNode<Node, NodeComp> * hn0 = init(d, nodes, s0);
 		closed.emplace(hn0->search_node.state, hn0);
 		open.push(hn0);
 
 		// Create threads after initial node is pushed
 		for (size_t i = 0; i < num_threads; i++){
-			threads.emplace_back(&CAFE::thread_speculate, this, std::ref(d), stop_source.get_token());
+			std::cout << "Creating Thread " << i << std::endl;
+			stop_token st = stop_source.get_token();
+			threads.emplace_back(&CAFE::thread_speculate, this, std::ref(d), std::ref(start_latch), std::ref(st));
 		}
+
+		start_latch.arrive_and_wait(); // because the main thread starts before the threads. On small problems, I hypothesize this causes threads to never stop as the main thread exits too quickly or something along those lines.
+
+		std::cout << "All Threads Created. Beginning Algorithm." << std::endl;
 
 		while (!open.empty() && !SearchAlgorithm<D>::limit()) {	
 			// std::cout << "Open: " << open << std::endl;
@@ -124,15 +138,14 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 			Node* n = &(hn->search_node);
 			State buf, &state = d.unpack(buf, n->state);
 
-			// std::cout << "Popped Node: " << *n << std::endl;
-
 			if (d.isgoal(state)) {
 				solpath<D, Node>(d, n, this->res);
+
 				stop_source.request_stop();
-				// wait for all jthreads to finish
 				for (auto& thread : threads){
 					thread.join();
 				}
+				
 				std::cout << "Speculated Nodes Expanded: " << speculated_nodes_expanded << std::endl;
 				std::cout << "Manual Expansions: " << manual_expansions << std::endl;
 				break;
@@ -140,11 +153,13 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 
 			std::pair<HeapNode<Node, NodeComp> *, std::size_t> successor_ret;
 			if(hn->is_completed()){
+				// std::cout << "Speculated Node Expanded" << std::endl;
 				speculated_nodes_expanded++;
 				successor_ret = hn->get_successors();
 			}else{
+				// std::cout << "Manual Expansion" << std::endl;
 				manual_expansions++;
-				successor_ret = expand(d, hn, state);
+				successor_ret = expand(d, hn, nodes, state);
 			}
 
 			SearchAlgorithm<D>::res.expd++;
@@ -189,8 +204,8 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 		SearchAlgorithm<D>::reset();
 		// open.clear();
 		closed.clear();
-		delete nodes;
-		nodes = new NodePool<Node, NodeComp>(OPEN_LIST_SIZE);
+		// delete nodes;
+		// nodes = new NodePool<Node, NodeComp>(OPEN_LIST_SIZE);
 	}
 
 	virtual void output(FILE *out) {
@@ -202,11 +217,11 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 
 private:
 
-	std::pair<HeapNode<Node, NodeComp> *, std::size_t> expand(D& d, HeapNode<Node, NodeComp> * hn, State& state) {
+	std::pair<HeapNode<Node, NodeComp> *, std::size_t> expand(D& d, HeapNode<Node, NodeComp> * hn, NodePool<Node, NodeComp> &nodes, State& state) {
 		Node * n = &(hn->search_node);
 
 		typename D::Operators ops(d, state);
-		auto successors = nodes->reserve(ops.size());
+		auto successors = nodes.reserve(ops.size());
 		size_t successor_count = 0;
 
 		for (unsigned int i = 0; i < ops.size(); i++) {
@@ -235,8 +250,8 @@ private:
 		return std::make_pair(successors, successor_count);
 	}
 
-	HeapNode<Node, NodeComp> * init(D &d, State &s0) {
-		HeapNode<Node, NodeComp> * hn0 = nodes->reserve(1);
+	HeapNode<Node, NodeComp> * init(D &d, NodePool<Node, NodeComp> &nodes, State &s0) {
+		HeapNode<Node, NodeComp> * hn0 = nodes.reserve(1);
 		Node* n0 = &(hn0->search_node);
 		d.pack(n0->state, s0);
 		n0->g = Cost(0);
@@ -248,5 +263,4 @@ private:
 
 	CafeMinBinaryHeap<Node, NodeComp> open;
 	boost::unordered_flat_map<PackedState, HeapNode<Node, NodeComp> *, StateHasher, StateEq> closed;
-	NodePool<Node, NodeComp> *nodes;
 };
