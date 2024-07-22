@@ -9,7 +9,7 @@
 #include <thread>
 #include <stop_token>
 
-#define OPEN_LIST_SIZE 200000000
+#define OPEN_LIST_SIZE 20000000
 
 template <class D> struct CAFE : public SearchAlgorithm<D> {
 
@@ -81,6 +81,7 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 	}
 
 	void thread_speculate(D &d, stop_token token){
+		std::cout << "Thread Started" << std::endl;
 		while(!token.stop_requested()){
 			HeapNode<Node, NodeComp> *hn = open.fetch_work();
 			if(hn == nullptr){
@@ -93,12 +94,16 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 			auto successor_ret = expand(d, hn, state);
 			hn->set_completed(successor_ret.first, successor_ret.second);
 		}
+		std::cout << "Thread Stopped" << std::endl;
 	}
 
 	void search(D &d, typename D::State &s0) {
 		this->start();
 
-		size_t num_threads = 2;
+		size_t speculated_nodes_expanded = 0;
+		size_t manual_expansions = 0;
+
+		size_t num_threads = 3;
 		std::vector<std::jthread> threads;
 		std::stop_source stop_source;
 
@@ -110,8 +115,6 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 		for (size_t i = 0; i < num_threads; i++){
 			threads.emplace_back(&CAFE::thread_speculate, this, std::ref(d), stop_source.get_token());
 		}
-
-		std::cerr << "Threads Created" << std::endl;
 
 		while (!open.empty() && !SearchAlgorithm<D>::limit()) {	
 			// std::cout << "Open: " << open << std::endl;
@@ -130,10 +133,21 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 				for (auto& thread : threads){
 					thread.join();
 				}
+				std::cout << "Speculated Nodes Expanded: " << speculated_nodes_expanded << std::endl;
+				std::cout << "Manual Expansions: " << manual_expansions << std::endl;
 				break;
 			}
 
-			auto successor_ret = (hn->is_completed()) ? hn->get_successors() : expand(d, hn, state);
+			std::pair<HeapNode<Node, NodeComp> *, std::size_t> successor_ret;
+			if(hn->is_completed()){
+				speculated_nodes_expanded++;
+				successor_ret = hn->get_successors();
+			}else{
+				manual_expansions++;
+				successor_ret = expand(d, hn, state);
+			}
+
+			SearchAlgorithm<D>::res.expd++;
 
 			HeapNode<Node, NodeComp>* successors = successor_ret.first;
 			size_t n_precomputed_successors = successor_ret.second;
@@ -165,6 +179,7 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 				closed.emplace(kid->state, successor); // add to closed list
 				// std::cout << "Adding successor " << std::endl;
 				open.push(successor); // add to open list
+				SearchAlgorithm<D>::res.gend++;
 			}
 		}
 		this->finish();
@@ -188,7 +203,6 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 private:
 
 	std::pair<HeapNode<Node, NodeComp> *, std::size_t> expand(D& d, HeapNode<Node, NodeComp> * hn, State& state) {
-		SearchAlgorithm<D>::res.expd++;
 		Node * n = &(hn->search_node);
 
 		typename D::Operators ops(d, state);
@@ -198,7 +212,6 @@ private:
 		for (unsigned int i = 0; i < ops.size(); i++) {
 			if (ops[i] == n->pop)
 				continue;
-			SearchAlgorithm<D>::res.gend++;
 
 			Node * kid = &(successors[successor_count].search_node);	
 			assert (kid != nullptr);
