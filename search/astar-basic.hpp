@@ -90,11 +90,13 @@ template <class D> struct AstarBasic : public SearchAlgorithm<D> {
 		open.push(n0);
 
 		while (!open.empty() && !SearchAlgorithm<D>::limit()) {
-			std::cout << "Open: " << open << std::endl;
+			// std::cout << "Open: " << open << std::endl;
+			// std::cout << "Open Pull" << std::endl;
+
 			Node *n = open.pop();
 			State buf, &state = d.unpack(buf, n->state);
 			
-			std::cout << "Popped Node: " << *n << std::endl;
+			// std::cout << "Popped Node: " << *n << std::endl;
 
 			if (d.isgoal(state)) {
 				solpath<D, Node>(d, n, this->res);
@@ -134,7 +136,8 @@ private:
 
 			Node *kid = nodes->construct(); // nodes->construct() is a function that returns a new node from the pool?
 			assert (kid);
-                        Oper op = ops[i];
+            Oper op = ops[i];
+
 			typename D::Edge e(d, state, op);
 			kid->g = n->g + e.cost;
 			d.pack(kid->state, e.state);
@@ -170,7 +173,7 @@ private:
 			kid->parent = n;
 			kid->op = op;
 			kid->pop = e.revop;
-			std::cout << "Adding successor " << *kid << std::endl;
+			// std::cout << "Adding successor " << std::endl;// *kid << std::endl;
 			closed.emplace(kid->state, kid);
 			open.push(kid);
 		}

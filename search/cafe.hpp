@@ -84,13 +84,15 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 		open.push(hn0);
 
 		while (!open.empty() && !SearchAlgorithm<D>::limit()) {	
-			std::cout << "Open: " << open << std::endl;
+			// std::cout << "Open: " << open << std::endl;
+			// std::cout << "Open Pull" << std::endl;
 			
 			HeapNode<Node, NodeComp>* hn = open.get(0);
 			open.pop();
 			Node* n = &(hn->search_node);
-			std::cout << "Popped Node: " << *n << std::endl;
 			State buf, &state = d.unpack(buf, n->state);
+
+			// std::cout << "Popped Node: " << *n << std::endl;
 
 			if (d.isgoal(state)) {
 				solpath<D, Node>(d, n, this->res);
@@ -105,8 +107,9 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 				HeapNode<Node, NodeComp>* successor = &(successors[i]);
 				Node *kid = &(successor->search_node);
 				assert(kid);
+
 				auto dup_it = closed.find(kid->state);
-				if (dup_it != closed.end()) { // if its in closed, check if dup ois better
+				if (dup_it != closed.end()) { // if its in closed, check if dup is better
 					HeapNode<Node, NodeComp> * dup_hn = dup_it->second;
 					Node &dup = dup_hn->search_node;
 					this->res.dups++;
@@ -123,9 +126,10 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 					open.decrease_key(dup_hn->handle);
 					continue;
 				}
-				closed.emplace(kid->state, successor);
-				std::cout << "search(): Adding successor " << *kid << std::endl;
-				open.push(successor);
+				
+				closed.emplace(kid->state, successor); // add to closed list
+				// std::cout << "Adding successor " << std::endl;
+				open.push(successor); // add to open list
 			}
 		}
 		this->finish();
@@ -149,27 +153,22 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 private:
 
 	std::pair<HeapNode<Node, NodeComp> *, std::size_t> expand(D& d, HeapNode<Node, NodeComp> * hn, State& state) {
-		// std::cout << "Expand()" << std::endl;
-		// std::cout << "Open: " << open;
 		SearchAlgorithm<D>::res.expd++;
-
 		Node * n = &(hn->search_node);
 
 		typename D::Operators ops(d, state);
-
-		
 		auto successors = nodes->reserve(ops.size());
 		size_t successor_count = 0;
-		// std::cout << "Reserving: " << ops.size() << " successors" << std::endl;
 
 		for (unsigned int i = 0; i < ops.size(); i++) {
 			if (ops[i] == n->pop)
 				continue;
-			
 			SearchAlgorithm<D>::res.gend++;
+
 			Node * kid = &(successors[successor_count].search_node);	
 			assert (kid != nullptr);
 			successor_count++;
+
 			typename D::Edge e(d, state, ops[i]);
 			kid->g = n->g + e.cost;
 			d.pack(kid->state, e.state);
