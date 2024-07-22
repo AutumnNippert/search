@@ -123,11 +123,11 @@ class CafeMinBinaryHeap{
             }
             HeapNode<Node_t, Compare> * xi = _data[i].load(std::memory_order_relaxed);
             HeapNode<Node_t, Compare> * xj = _data[j].load(std::memory_order_relaxed);
-            if(Compare()(xj->search_node, xi->search_node)){
-                return;
+            if(Compare()(xi->search_node, xj->search_node)){
+                swap_helper(i, j, xi, xj);
+                pull_up(j);
             }
-            swap_helper(i, j, xi, xj);
-            pull_up(j);
+            
         }
 
         inline void push_down(handle_t i, const std::size_t s){
@@ -203,8 +203,8 @@ class CafeMinBinaryHeap{
         inline HeapNode<Node_t, Compare> * fetch_work() const{  // for worker
             std::size_t s = size.load(std::memory_order_acquire);
             for(std::size_t i = 0; i < s; i++){
-                HeapNode<Node_t, Compare> * n = _data[i].load(std::memory_order_relaxed);
-                if(n->flags.reserve()){
+                HeapNode<Node_t, Compare> * n = _data[i];
+                if(n->reserve()){
                     return n;
                 }
             }
@@ -244,11 +244,24 @@ class CafeMinBinaryHeap{
             return true;
         }
 
-        inline friend std::ostream& operator<<(std::ostream& stream, const CafeMinBinaryHeap<Node_t, Compare>& heap){
-            std::size_t s = heap.size.load();
-            for (std::size_t i = 0; i < s; i++){
-                stream << *heap._data[i] << " ";
+        inline friend void dump(std::ostream& stream, const CafeMinBinaryHeap<Node_t, Compare>& heap, std::size_t i, int depth){
+            if (i >= heap.size){
+                return;
             }
+            for(int j = 0; j < depth; j++){
+                stream << " ";
+            }
+            stream << *heap._data[i] << "\n";
+            dump(stream, heap, left_child(i), depth + 1);
+            dump(stream, heap, right_child(i), depth + 1);
+        }
+
+        inline friend std::ostream& operator<<(std::ostream& stream, const CafeMinBinaryHeap<Node_t, Compare>& heap){
+            dump(stream, heap, 0, 0);
+            // std::size_t s = heap.size.load();
+            // for (std::size_t i = 0; i < s; i++){
+            //     stream << *heap._data[i] << " ";
+            // }
             return stream;
         }
 };

@@ -41,7 +41,7 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 			return n->state;
 		}
 
-		static bool pred(Node *a, Node *b) {
+		static bool pred(const Node *a, const Node *b) {
 			if (a->f == b->f)
 				return a->g > b->g;
 			return a->f < b->f;
@@ -63,7 +63,7 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 
 	struct NodeComp{
 		bool operator()(const Node& lhs, const Node& rhs) const{
-			return Node::prio(&lhs) < Node::prio(&rhs);
+			return Node::pred(&lhs, &rhs);
 		}
 	};
 
@@ -86,9 +86,10 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 		while (!open.empty() && !SearchAlgorithm<D>::limit()) {	
 			// std::cout << "Open: " << open << std::endl;
 			// std::cout << "Open Pull" << std::endl;
-			
+			std::cerr << open << "\n";
 			HeapNode<Node, NodeComp>* hn = open.get(0);
 			open.pop();
+			std::cerr << "Expanded: " << *hn << "\n";
 			Node* n = &(hn->search_node);
 			State buf, &state = d.unpack(buf, n->state);
 
