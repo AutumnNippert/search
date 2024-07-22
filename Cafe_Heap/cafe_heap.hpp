@@ -62,11 +62,15 @@ class NodePool{ // NOT THREAD SAFE ONE PER THREAD
         std::size_t _size;
     public:
         NodePool(std::size_t capacity):_capacity(capacity),_size(0){
-            _nodes = new HeapNode<Node_t, Compare>[capacity];
+            _nodes = reinterpret_cast<HeapNode<Node_t, Compare> *>(std::malloc(capacity * sizeof(HeapNode<Node_t, Compare>)));
+            if(_nodes == nullptr){
+                std::cerr << "Error bad malloc\n";
+                exit(-1);
+            }
         }
 
         ~NodePool(){
-            delete[] _nodes;
+            free(_nodes);
         }
 
         HeapNode<Node_t, Compare> * reserve(std::size_t n){
