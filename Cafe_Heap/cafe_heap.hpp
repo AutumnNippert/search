@@ -163,12 +163,16 @@ class CafeMinBinaryHeap{
     public:       
         inline CafeMinBinaryHeap(std::size_t capacity):_capacity(capacity){
             // setup heap before workers!
-            _data = new std::atomic<HeapNode<Node_t, Compare> *>[capacity];
+            _data = reinterpret_cast<std::atomic<HeapNode<Node_t, Compare> *> *>(std::malloc(capacity * sizeof(std::atomic<HeapNode<Node_t, Compare> *>)));
+            if(_data == nullptr){
+                std::cerr << "Error bad malloc\n";
+                exit(-1);
+            }
             size.store(0, std::memory_order_release);
         }
 
         inline ~CafeMinBinaryHeap(){
-            delete[] _data;
+            free(_data);
         }
 
         inline HeapNode<Node_t, Compare> * get(handle_t i) const{
