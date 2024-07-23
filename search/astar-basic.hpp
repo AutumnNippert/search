@@ -89,11 +89,11 @@ template <class D> struct AstarBasic : public SearchAlgorithm<D> {
 		closed.emplace(n0->state, n0);
 		open.push(n0);
 
-		while (!open.empty() && !SearchAlgorithm<D>::limit()) {
-			//std::cerr << open << std::endl;
+		while (!open.empty() && !SearchAlgorithm<D>::limit() && SearchAlgorithm<D>::res.expd < 500) {
 			// std::cout << "Open Pull" << std::endl;
 			Node *n = open.pop();
-			//std::cerr << "pop:"<<*n << "\n";
+			std::cerr << "pop:"<<*n << "\n";
+			std::cerr << open << std::endl;
 			State buf, &state = d.unpack(buf, n->state);
 			
 			// std::cout << "Popped Node: " << *n << std::endl;
@@ -141,7 +141,11 @@ private:
 			typename D::Edge e(d, state, op);
 			kid->g = n->g + e.cost;
 			d.pack(kid->state, e.state);
-
+			// comment out below along with debug
+			kid->f = kid->g + d.h(e.state);
+			kid->parent = n;
+			kid->op = op;
+			kid->pop = e.revop;
 			// unsigned long hash = kid->state.hash(&d);
 			auto dupl = closed.find(kid->state);
 			if (dupl != closed.end()) {
@@ -151,6 +155,7 @@ private:
 					nodes->destruct(kid);
 					continue;
 				}
+				std::cerr << "duplicate:" << *kid << " " << *dup << " same state? "<< StateEq()(kid->state, dup->state) << "\n";
 				bool isopen = open.mem(dup);
 				if (isopen)
 					open.pre_update(dup);
@@ -161,6 +166,7 @@ private:
 				dup->pop = e.revop;
 				if (isopen) {
 					open.post_update(dup);
+					std::cerr << open << std::endl;
 				} else {
 					this->res.reopnd++;
 					open.push(dup);
@@ -176,6 +182,8 @@ private:
 			// std::cout << "Adding successor " << std::endl;// *kid << std::endl;
 			closed.emplace(kid->state, kid);
 			open.push(kid);
+			std::cerr << "push:" << *kid << "\n";
+			std::cerr << open << "\n";
 		}
 	}
 

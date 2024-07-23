@@ -146,12 +146,12 @@ class CafeMinBinaryHeap{
                     smallest = xl;
                     smallest_i = l;
                 }
-                if(r < s){
-                    HeapNode<Node_t, Compare> * xr = _data[r].load(std::memory_order_relaxed);
-                    if(Compare()(xr->search_node, smallest->search_node)){
-                        smallest = xr;
-                        smallest_i = r;
-                    }
+            }
+            if(r < s){
+                HeapNode<Node_t, Compare> * xr = _data[r].load(std::memory_order_relaxed);
+                if(Compare()(xr->search_node, smallest->search_node)){
+                    smallest = xr;
+                    smallest_i = r;
                 }
             }
             if(smallest_i != i){

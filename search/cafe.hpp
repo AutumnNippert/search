@@ -135,13 +135,14 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 
 		std::cout << "All Threads Initialized. Beginning Algorithm." << std::endl;
 
-		while (!open.empty() && !SearchAlgorithm<D>::limit()) {	
-			//std::cerr << open << std::endl;
+		while (!open.empty() && !SearchAlgorithm<D>::limit() && SearchAlgorithm<D>::res.expd < 500) {	
 			// std::cout << "Open Pull" << std::endl;
 			HeapNode<Node, NodeComp>* hn = open.get(0);
 			open.pop();
 			Node* n = &(hn->search_node);
-			//std::cerr << "pop:" << *n << "\n";
+			std::cerr << "pop:" << *n << "\n";
+			std::cerr << open << std::endl;
+
 			State buf, &state = d.unpack(buf, n->state);
 
 			if (d.isgoal(state)) {
@@ -156,7 +157,7 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 				std::cout << "Manual Expansions: " << manual_expansions << std::endl;
 				break;
 			}
-
+			SearchAlgorithm<D>::res.expd++;
 			std::pair<HeapNode<Node, NodeComp> *, std::size_t> successor_ret;
 			if(hn->is_completed()){
 				// std::cout << "Speculated Node Expanded" << std::endl;
@@ -168,7 +169,7 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 				successor_ret = expand(d, hn, nodes, state);
 			}
 
-			SearchAlgorithm<D>::res.expd++;
+			
 
 			HeapNode<Node, NodeComp>* successors = successor_ret.first;
 			size_t n_precomputed_successors = successor_ret.second;
@@ -189,11 +190,17 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 						continue;
 					}
 					open.decrease_key(dup_hn->handle, successor);
+					std::cerr << "duplicate:" << *kid << " " << dup << " same state? "<< StateEq()(kid->state, dup.state) << "\n";
+					std::cerr << open << "\n";
+					closed.emplace(kid->state, successor); // add to closed list
 				}
 				else{
 					open.push(successor); // add to open list
+					std::cerr << "push:" << successor->search_node << "\n";
+					std::cerr << open << "\n";
+					closed.emplace(kid->state, successor); // add to closed list
 				}
-				closed.emplace(kid->state, successor); // add to closed list
+				
 				// std::cout << "Adding successor " << std::endl;
 			}
 		}
