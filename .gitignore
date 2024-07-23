@@ -55,6 +55,7 @@ traffic/watch
 unknowngridnav/watch
 
 labyrinth/*
+algocomp_res/*
 
 .vscode
 *.vw
