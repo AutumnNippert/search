@@ -10,7 +10,7 @@
 #include <thread>
 #include <stop_token>
 
-#define OPEN_LIST_SIZE 20000000
+#define OPEN_LIST_SIZE 200000000
 
 template <class D> struct CAFE : public SearchAlgorithm<D> {
 
@@ -82,11 +82,8 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 	}
 
 	void thread_speculate(D &d, std::latch& start_latch, std::stop_token& token){
-		std::cout << "Thread Created. Allocating node pool..." << std::endl;
-		// node pool creatin
 		NodePool<Node, NodeComp> nodes(OPEN_LIST_SIZE);
 		start_latch.arrive_and_wait();
-		std::cout << "Thread Started" << std::endl;
 		while(!token.stop_requested()){
 			HeapNode<Node, NodeComp> *hn = open.fetch_work();
 			if(hn == nullptr){
@@ -99,11 +96,12 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 			auto successor_ret = expand(d, hn, nodes, state);
 			hn->set_completed(successor_ret.first, successor_ret.second);
 		}
-		std::cout << "Thread Stopped" << std::endl;
 	}
 
 	void search(D &d, typename D::State &s0) {
 		this->start();
+		// get time
+		auto start = std::chrono::high_resolution_clock::now();
 
 		size_t speculated_nodes_expanded = 0;
 		size_t manual_expansions = 0;
@@ -121,14 +119,18 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 
 		// Create threads after initial node is pushed
 		for (size_t i = 0; i < num_threads; i++){
-			std::cout << "Creating Thread " << i << std::endl;
 			stop_token st = stop_source.get_token();
 			threads.emplace_back(&CAFE::thread_speculate, this, std::ref(d), std::ref(start_latch), std::ref(st));
 		}
 
 		start_latch.arrive_and_wait(); // because the main thread starts before the threads. On small problems, I hypothesize this causes threads to never stop as the main thread exits too quickly or something along those lines.
 
-		std::cout << "All Threads Created. Beginning Algorithm." << std::endl;
+		// get time after threads are initialized
+		auto end = std::chrono::high_resolution_clock::now();
+		std::chrono::duration<double> elapsed_seconds = end - start;
+		std::cout << "Time to Initialize Threads: " << elapsed_seconds.count() << std::endl;
+
+		std::cout << "All Threads Initialized. Beginning Algorithm." << std::endl;
 
 		while (!open.empty() && !SearchAlgorithm<D>::limit()) {	
 			// std::cout << "Open: " << open << std::endl;
@@ -145,7 +147,7 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 				for (auto& thread : threads){
 					thread.join();
 				}
-				
+
 				std::cout << "Speculated Nodes Expanded: " << speculated_nodes_expanded << std::endl;
 				std::cout << "Manual Expansions: " << manual_expansions << std::endl;
 				break;
