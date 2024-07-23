@@ -3,12 +3,13 @@
 #include "../search/search.hpp"
 #include "../utils/pool.hpp"
 
-#include <boost/asio/thread_pool.hpp>
-#include <boost/asio/post.hpp>
-void busywait()  __attribute__((optimize(0)));
-void busywait(){
-	return;
-}
+#include <barrier> // for worker synchronization
+
+#define THREAD_COUNT 4
+
+std::barrier start_barrier{THREAD_COUNT+1};
+std::barrier complete_barrier{THREAD_COUNT+1};
+
 
 template <class D> struct KBFS : public SearchAlgorithm<D> {
 
@@ -21,7 +22,6 @@ template <class D> struct KBFS : public SearchAlgorithm<D> {
 		ClosedEntry<Node, D> closedent;
 		int openind;
 		Node *parent;
-		vector<Node*> children; // Vector of children nodes
 		PackedState state;
 		Oper op, pop;
 		Cost f, g;
@@ -69,9 +69,31 @@ template <class D> struct KBFS : public SearchAlgorithm<D> {
 		delete nodes;
 	}
 
+	void worker(D &d, size_t id, Node** top_nodes, std::vector<Node*>* expanded_nodes, std::stop_token& token){
+		while(!token.stop_requested()){
+			start_barrier.arrive_and_wait();
+			if(token.stop_requested()) return;
+
+			// check topNodes[id] for the node* to expand
+			Node* n = top_nodes[id];
+			if(n == nullptr){
+				std::cout << "Thread " << id << "has no node to expand.";
+				// no node to expand in top_nodes[id]
+				expanded_nodes[id] = std::vector<Node*>();
+				complete_barrier.arrive_and_wait();
+				continue;
+			}
+			State buf, &state = d.unpack(buf, n->state);
+			auto successors = expand(d, n, state);
+			// should be a vector of nodes
+			expanded_nodes[id] = successors;
+			complete_barrier.arrive_and_wait();
+		}
+	}
+
 	void search(D &d, typename D::State &s0) {
 		//kpbfs main thread
-		long k = 2;
+		const size_t k = 2;
 
 		this->start();
 		closed.init(d);
@@ -80,54 +102,52 @@ template <class D> struct KBFS : public SearchAlgorithm<D> {
 		closed.add(n0);
 		open.push(n0);
 
-		boost::asio::thread_pool tp(k);
-
 		bool found = false;
 
+		std::vector<std::jthread> threads;
+		threads.reserve(k); //idk why but ref said this so
+
+		std::stop_source stop_source;
+
+		Node** top_nodes = new Node*[k];
+		std::vector<Node*>* expanded_nodes = new std::vector<Node*>[k];
+
+		// +1 for the main thread to signal to them/wait for them
+		
+		for (size_t i = 0; i < k; i++){
+			stop_token st = stop_source.get_token();
+			threads.emplace_back(&KBFS::worker, this, std::ref(d), i, std::ref(top_nodes), std::ref(expanded_nodes), std::ref(st));
+		}
+
+		std::cout << "Threads created" << std::endl;
+
+		size_t loops = 0;
+
 		while (!open.empty() && !SearchAlgorithm<D>::limit() && !found) {
-
 			// get k top nodes on open list (less than k if open list is smaller)
-
-			std::vector<Node*> topNodes;
-			for (int i = 0; i < k; i++) {
+			for (size_t i = 0; i < k; i++) {
 				if (open.empty()) {
 					break;
 				}
-				topNodes.push_back(open.pop());
+				top_nodes[i] = open.pop();
 			}
-
-			size_t completedCount = 0;
-
-			// give nodes to thread pool
-			size_t size = topNodes.size();
-			for (size_t i = 0; i < size; i++) {
-				// cout << "ThreadPool :: Posting to thread pool" << endl;
-				Node* n = topNodes[i];
-				State buf, &state = d.unpack(buf, n->state);
-				boost::asio::post(tp, [this, &d, n, &state, &completedCount](){
-					kbfsWorker(d, n, state, completedCount);
-				});
-			}
-
-			// wait till done
-			while(completedCount < size){
-				busywait();
-			}
-
-			// cout << "kbatch of size " << topNodes.size() << " done" << endl;
+			start_barrier.arrive_and_wait(); // Starts the threads on expansion
+			if (loops % 10000) std::cout << "homies should be chuggin: " << loops << std::endl;
+			loops++;
+			complete_barrier.arrive_and_wait(); // Waits for all the threads to complete
 
 			// add all to open
-			for (size_t i = 0; i < topNodes.size(); i++) {
-				Node* n = topNodes[i];
-				State buf, &state = d.unpack(buf, n->state);
-
-				// cout << "Checking node with " << n->children.size() << " children" << endl;
-				for (Node* kid : n->children){
-
+			for (size_t i = 0; i < k; i++) {
+				std::vector<Node*> exp_nodes = expanded_nodes[i];
+				for (Node* kid : exp_nodes){
+					State buf, &state = d.unpack(buf, kid->state);
 					if (d.isgoal(state)) {
-						solpath<D, Node>(d, n, this->res);
-						tp.join();
-						found = true; // should break out of the outer while loop
+						solpath<D, Node>(d, kid, this->res);
+						stop_source.request_stop();
+						for (auto& thread : threads){
+							thread.join();
+						}
+						found = true;
 						break;
 					}
 
@@ -145,7 +165,7 @@ template <class D> struct KBFS : public SearchAlgorithm<D> {
 							open.pre_update(dup);
 						dup->f = dup->f - dup->g + kid->g;
 						dup->g = kid->g;
-						dup->parent = n;
+						dup->parent = kid;
 						dup->op = kid->op;
 						// dup->pop = e.revop; // I literally can't find what e.revop is
 						if (isopen) {
@@ -162,17 +182,14 @@ template <class D> struct KBFS : public SearchAlgorithm<D> {
 					closed.add(kid, hash);
 					open.push(kid);
 				}
+				if(found) break;
 			}
-			// cout << "openlist size: " << open.size() << endl;
+			if(found) break;
 		}
+		delete[] top_nodes;
+		delete[] expanded_nodes;
 		
 		this->finish();
-	}
-
-	void kbfsWorker(D &d, Node *n, State &state, size_t &completedCount){
-		expandAndStore(d, n, state);
-		completedCount++; // should increment when worker is done?
-		// cout << "kbfs worker completed. Current count completed: " << completedCount << endl;
 	}
 
 	virtual void reset() {
@@ -192,8 +209,9 @@ template <class D> struct KBFS : public SearchAlgorithm<D> {
 
 private:
 
-	void expandAndStore(D &d, Node *n, State &state) {
+	std::vector<Node*> expand(D &d, Node *n, State &state) {
 		SearchAlgorithm<D>::res.expd++;
+		std::vector<Node*> children;
 
 		typename D::Operators ops(d, state);
 		for (unsigned int i = 0; i < ops.size(); i++) {
@@ -201,7 +219,7 @@ private:
 				continue;
 			SearchAlgorithm<D>::res.gend++;
 
-			Node *kid = nodes->construct(); // nodes->construct() is a function that returns a new node from the pool?
+			Node *kid = nodes->construct();
 			assert (kid);
             Oper op = ops[i];
 			typename D::Edge e(d, state, op);
@@ -212,10 +230,9 @@ private:
 			kid->parent = n;
 			kid->op = op;
 			kid->pop = e.revop;
-			// closed.add(kid, hash);
-			n->children.push_back(kid);
-			// cout << "expandAndStore() :: Added child" << endl;
+			children.push_back(kid);
 		}
+		return children;
 	}
 
 	Node *init(D &d, State &s0) {
