@@ -72,8 +72,13 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 		}
 	};
 
-	CAFE(int argc, const char *argv[]) :
-		SearchAlgorithm<D>(argc, argv), open(OPEN_LIST_SIZE)/*, closed(30000001)*/ {
+	CAFE(int argc, const char *argv[]):
+	 SearchAlgorithm<D>(argc, argv), open(OPEN_LIST_SIZE){
+		num_threads = 1;
+		for (int i = 0; i < argc; i++) {
+			if (strcmp(argv[i], "-threads") == 0)
+				num_threads = strtod(argv[++i], NULL);
+		}
 		// nodes = new NodePool<Node, NodeComp>(OPEN_LIST_SIZE);
 	}
 
@@ -81,9 +86,8 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 		// delete nodes;
 	}
 
-	void thread_speculate(D &d, std::latch& start_latch, std::stop_token& token){
+	void thread_speculate(D &d, std::stop_token& token){
 		NodePool<Node, NodeComp> nodes(OPEN_LIST_SIZE);
-		start_latch.arrive_and_wait();
 		while(!token.stop_requested()){
 			HeapNode<Node, NodeComp> *hn = open.fetch_work();
 			if(hn == nullptr){
@@ -106,10 +110,9 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 		size_t speculated_nodes_expanded = 0;
 		size_t manual_expansions = 0;
 
-		size_t num_threads = 2;
 		std::vector<std::jthread> threads;
 		std::stop_source stop_source;
-		std::latch start_latch(num_threads + 1);
+		//std::latch start_latch(num_threads + 1);
 
 		NodePool<Node, NodeComp> nodes(OPEN_LIST_SIZE);
 
@@ -118,12 +121,12 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 		open.push(hn0);
 
 		// Create threads after initial node is pushed
-		for (size_t i = 0; i < num_threads; i++){
+		for (size_t i = 0; i < num_threads - 1; i++){
 			stop_token st = stop_source.get_token();
-			threads.emplace_back(&CAFE::thread_speculate, this, std::ref(d), std::ref(start_latch), std::ref(st));
+			threads.emplace_back(&CAFE::thread_speculate, this, std::ref(d), std::ref(st));
 		}
 
-		start_latch.arrive_and_wait(); // because the main thread starts before the threads. On small problems, I hypothesize this causes threads to never stop as the main thread exits too quickly or something along those lines.
+		//start_latch.arrive_and_wait(); // because the main thread starts before the threads. On small problems, I hypothesize this causes threads to never stop as the main thread exits too quickly or something along those lines.
 
 		// get time after threads are initialized
 		auto end = std::chrono::high_resolution_clock::now();
@@ -183,20 +186,14 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 						// nodes->destruct(kid);
 						continue;
 					}
-					dup.f = dup.f - dup.g + kid->g;
-					dup.g = kid->g;
-					dup.parent = n;
-					dup.op = kid->op;
-					dup.pop = kid->pop;
-					// nodes->destruct(kid);
-					open.decrease_key(dup_hn->handle);
-					continue;
+					open.decrease_key(dup_hn->handle, successor);
 				}
-				
+				else{
+					open.push(successor); // add to open list
+					SearchAlgorithm<D>::res.gend++;
+				}
 				closed.emplace(kid->state, successor); // add to closed list
 				// std::cout << "Adding successor " << std::endl;
-				open.push(successor); // add to open list
-				SearchAlgorithm<D>::res.gend++;
 			}
 		}
 		this->finish();
@@ -218,7 +215,7 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 	}
 
 private:
-
+	size_t num_threads;
 	std::pair<HeapNode<Node, NodeComp> *, std::size_t> expand(D& d, HeapNode<Node, NodeComp> * hn, NodePool<Node, NodeComp> &nodes, State& state) {
 		Node * n = &(hn->search_node);
 

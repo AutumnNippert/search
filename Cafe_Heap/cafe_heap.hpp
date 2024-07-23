@@ -195,12 +195,15 @@ class CafeMinBinaryHeap{
             std::size_t s = size.load(std::memory_order_relaxed);
             node->handle = s;
             node->zero();
-            _data[s].store(node, std::memory_order_relaxed);
+            _data[s].store(node, std::memory_order_release);
             pull_up(s);
             size.store(++s, std::memory_order_release); 
         }
 
-        inline void decrease_key(handle_t i){
+        inline void decrease_key(handle_t i, HeapNode<Node_t, Compare> * node){
+            node->handle = i;
+            node->zero();
+            _data[i].store(node, std::memory_order_release);
             pull_up(i);
         }
 
