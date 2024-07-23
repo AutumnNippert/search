@@ -90,9 +90,10 @@ template <class D> struct AstarBasic : public SearchAlgorithm<D> {
 		open.push(n0);
 
 		while (!open.empty() && !SearchAlgorithm<D>::limit()) {
-			// std::cout << "Open: " << open << std::endl;
+			//std::cerr << open << std::endl;
 			// std::cout << "Open Pull" << std::endl;
 			Node *n = open.pop();
+			//std::cerr << "pop:"<<*n << "\n";
 			State buf, &state = d.unpack(buf, n->state);
 			
 			// std::cout << "Popped Node: " << *n << std::endl;

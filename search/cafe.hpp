@@ -136,11 +136,12 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 		std::cout << "All Threads Initialized. Beginning Algorithm." << std::endl;
 
 		while (!open.empty() && !SearchAlgorithm<D>::limit()) {	
-			// std::cout << "Open: " << open << std::endl;
+			//std::cerr << open << std::endl;
 			// std::cout << "Open Pull" << std::endl;
 			HeapNode<Node, NodeComp>* hn = open.get(0);
 			open.pop();
 			Node* n = &(hn->search_node);
+			//std::cerr << "pop:" << *n << "\n";
 			State buf, &state = d.unpack(buf, n->state);
 
 			if (d.isgoal(state)) {
@@ -173,6 +174,7 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 			size_t n_precomputed_successors = successor_ret.second;
 
 			for (unsigned int i = 0; i < n_precomputed_successors; i++) {
+				SearchAlgorithm<D>::res.gend++;
 				HeapNode<Node, NodeComp>* successor = &(successors[i]);
 				Node *kid = &(successor->search_node);
 				assert(kid);
@@ -190,7 +192,6 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 				}
 				else{
 					open.push(successor); // add to open list
-					SearchAlgorithm<D>::res.gend++;
 				}
 				closed.emplace(kid->state, successor); // add to closed list
 				// std::cout << "Adding successor " << std::endl;

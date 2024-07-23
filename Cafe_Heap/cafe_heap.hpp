@@ -262,7 +262,7 @@ class CafeMinBinaryHeap{
             for(int j = 0; j < depth; j++){
                 stream << " ";
             }
-            stream << *heap._data[i] << "\n";
+            stream << heap._data[i].load()->search_node << "\n";
             dump(stream, heap, left_child(i), depth + 1);
             dump(stream, heap, right_child(i), depth + 1);
         }
