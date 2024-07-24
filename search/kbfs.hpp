@@ -87,7 +87,7 @@ template <class D> struct KBFS : public SearchAlgorithm<D> {
 				return;
 			}
 			children[i].clear();
-			std::cerr << "Thread " << i << " waiting for start" << std::endl;
+			// std::cerr << "Thread " << i << " waiting for start" << std::endl;
 			// check topNodes[id] for the node* to expand
 			Node* n = node_to_expand[i];
 			assert(n);
@@ -97,9 +97,9 @@ template <class D> struct KBFS : public SearchAlgorithm<D> {
 			thread_state[i] = ThreadState::expanded;
 			lk.unlock();
 			worker_done[i].notify_one();
-			std::cerr << "Thread " << i << " waiting to complete" << std::endl;
+			// std::cerr << "Thread " << i << " waiting to complete" << std::endl;
 		}
-		std::cerr << "Thread " << i << " stopped" << std::endl;
+		// std::cerr << "Thread " << i << " stopped" << std::endl;
 	}
 
 	void search(D &d, typename D::State &s0) {
@@ -129,7 +129,7 @@ template <class D> struct KBFS : public SearchAlgorithm<D> {
 			threads.emplace_back(&KBFS::worker, this, std::ref(d), i, st);
 		}
 
-		std::cout << "Threads created" << std::endl;
+		// std::cout << "Threads created" << std::endl;
 
 		while (!open.empty() && !SearchAlgorithm<D>::limit() && !found) {
 			// get k top nodes on open list (less than k if open list is smaller)
@@ -150,8 +150,8 @@ template <class D> struct KBFS : public SearchAlgorithm<D> {
 			// }
 			// loops++;
 
-			std::cout << "Main: Waiting for threads to complete" << std::endl;
-			std::cout << "Main: Threads completed" << std::endl;
+			// std::cout << "Main: Waiting for threads to complete" << std::endl;
+			// std::cout << "Main: Threads completed" << std::endl;
 
 
 
@@ -208,14 +208,14 @@ template <class D> struct KBFS : public SearchAlgorithm<D> {
 			if(found) break;
 		}
 		stop_source.request_stop();
-		std::cerr << "Main: Request Stop" << std::endl;
+		// std::cerr << "Main: Request Stop" << std::endl;
 		for (std::size_t i = 0; i < k; i++){
 			std::unique_lock<std::mutex> lk(locks[i]);
 			thread_state[i] = ThreadState::to_expand;
 			lk.unlock();
 			worker_start[i].notify_one();
 		}
-		std::cerr << "threads stopped\n";
+		// std::cerr << "threads stopped\n";
 		this->finish();
 		
 	}
