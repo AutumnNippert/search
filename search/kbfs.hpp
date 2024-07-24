@@ -3,14 +3,11 @@
 #include "../search/search.hpp"
 #include "../utils/pool.hpp"
 
-#include <barrier> // for worker synchronization
 #include <stop_token> // for stopping the threads
+#include <mutex>
+#include <condition_variable>
 
-#define THREAD_COUNT 2
-
-std::barrier start_barrier{THREAD_COUNT+1};
-std::barrier complete_barrier{THREAD_COUNT+1};
-
+enum ThreadState {to_expand, expanded};
 
 template <class D> struct KBFS : public SearchAlgorithm<D> {
 
@@ -70,6 +67,11 @@ template <class D> struct KBFS : public SearchAlgorithm<D> {
 
 	KBFS(int argc, const char *argv[]) :
 		SearchAlgorithm<D>(argc, argv) {
+		num_threads = 1;
+		for (int i = 0; i < argc; i++) {
+			if (strcmp(argv[i], "-threads") == 0)
+				num_threads = strtod(argv[++i], NULL);
+		}
 		nodes = new Pool<Node>();
 	}
 
@@ -77,36 +79,33 @@ template <class D> struct KBFS : public SearchAlgorithm<D> {
 		delete nodes;
 	}
 
-	void worker(D &d, size_t id, Node** top_nodes, std::vector<Node*>* expanded_nodes, std::stop_token token){
+	void worker(D &d, size_t i, std::stop_token token){
 		while(!token.stop_requested()){
-			std::cerr << "Thread " << id << " waiting for start" << std::endl;
-			start_barrier.arrive_and_wait();
-			if(token.stop_requested()) break;
-
-			// check topNodes[id] for the node* to expand
-			Node* n = top_nodes[id];
-			if(n == nullptr){
-				std::cout << "Thread " << id << " has no node to expand." << std::endl;
-				// no node to expand in top_nodes[id]
-				expanded_nodes[id] = std::vector<Node*>();
-				complete_barrier.arrive_and_wait();
-				continue;
+			std::unique_lock<std::mutex> lk(locks[i]);
+			worker_start[i].wait(lk, [&]{return thread_state[i] == ThreadState::to_expand;});
+			if(token.stop_requested()){
+				return;
 			}
+			children[i].clear();
+			std::cerr << "Thread " << i << " waiting for start" << std::endl;
+			// check topNodes[id] for the node* to expand
+			Node* n = node_to_expand[i];
+			assert(n);
 			State buf, &state = d.unpack(buf, n->state);
-			auto successors = expand(d, n, state);
 			// should be a vector of nodes
-			expanded_nodes[id] = successors;
-			
-			std::cerr << "Thread " << id << " waiting to complete" << std::endl;
-			complete_barrier.arrive_and_wait();
+			children[i] = expand(d, n, state);
+			thread_state[i] = ThreadState::expanded;
+			lk.unlock();
+			worker_done[i].notify_one();
+			std::cerr << "Thread " << i << " waiting to complete" << std::endl;
 		}
-		start_barrier.arrive_and_drop();
-		std::cerr << "Thread " << id << " stopped" << std::endl;
+		std::cerr << "Thread " << i << " stopped" << std::endl;
 	}
 
 	void search(D &d, typename D::State &s0) {
 		//kpbfs main thread
-		const size_t k = THREAD_COUNT;
+		const std::size_t k = num_threads;
+		reset_sync();
 
 		this->start();
 		// closed.init(d);
@@ -122,55 +121,52 @@ template <class D> struct KBFS : public SearchAlgorithm<D> {
 
 		std::stop_source stop_source;
 
-		Node** top_nodes = new Node*[k];
-		std::vector<Node*>* expanded_nodes = new std::vector<Node*>[k];
 
 		// +1 for the main thread to signal to them/wait for them
 		
-		for (size_t i = 0; i < k; i++){
+		for (std::size_t i = 0; i < k; i++){
 			stop_token st = stop_source.get_token();
-			threads.emplace_back(&KBFS::worker, this, std::ref(d), i, std::ref(top_nodes), std::ref(expanded_nodes), st);
+			threads.emplace_back(&KBFS::worker, this, std::ref(d), i, st);
 		}
 
 		std::cout << "Threads created" << std::endl;
 
-		size_t loops = 0;
-
 		while (!open.empty() && !SearchAlgorithm<D>::limit() && !found) {
 			// get k top nodes on open list (less than k if open list is smaller)
-			for (size_t i = 0; i < k; i++) {
+			std::size_t n_threads_dispatched = 0;
+			for (std::size_t i = 0; i < k; i++) {
 				if (open.empty()) {
 					break;
 				}
-				top_nodes[i] = open.pop();
+				std::unique_lock<std::mutex> lk(locks[i]);
+				node_to_expand[i] = open.pop();
+				thread_state[i] = ThreadState::to_expand;
+				lk.unlock();
+				worker_start[i].notify_one();
+				n_threads_dispatched++;
 			}
-			start_barrier.arrive_and_wait(); // Starts the threads on expansion
-			if (loops %10000 == 0){
-				std::cout << "homies should be chuggin: " << loops << std::endl;
-			}
-			loops++;
+			// if (loops %10000 == 0){
+			// 	std::cout << "homies should be chuggin: " << loops << std::endl;
+			// }
+			// loops++;
 
 			std::cout << "Main: Waiting for threads to complete" << std::endl;
-			complete_barrier.arrive_and_wait(); // Waits for all the threads to complete
 			std::cout << "Main: Threads completed" << std::endl;
 
 
 
 			// add all to open
-			for (size_t i = 0; i < k; i++) {
-				std::vector<Node*> exp_nodes = expanded_nodes[i];
+			for (size_t i = 0; i < n_threads_dispatched; i++) {
+				std::unique_lock<std::mutex> lk(locks[i]);
+				worker_done[i].wait(lk, [&]{return thread_state[i] == ThreadState::expanded;});
+
+				std::vector<Node*>& exp_nodes = children[i];
 				SearchAlgorithm<D>::res.expd++;
 				for (Node* kid : exp_nodes){
 					State buf, &state = d.unpack(buf, kid->state);
 					if (d.isgoal(state)) {
 						solpath<D, Node>(d, kid, this->res);
-						stop_source.request_stop();
-						std::cerr << "Main: Request Stop" << std::endl;
 						// start barrier to stop the threads
-						start_barrier.arrive_and_drop();
-						for (auto& thread : threads){
-							thread.join();
-						}
 						found = true;
 						break;
 					}
@@ -211,10 +207,17 @@ template <class D> struct KBFS : public SearchAlgorithm<D> {
 			}
 			if(found) break;
 		}
-		delete[] top_nodes;
-		delete[] expanded_nodes;
-		
+		stop_source.request_stop();
+		std::cerr << "Main: Request Stop" << std::endl;
+		for (std::size_t i = 0; i < k; i++){
+			std::unique_lock<std::mutex> lk(locks[i]);
+			thread_state[i] = ThreadState::to_expand;
+			lk.unlock();
+			worker_start[i].notify_one();
+		}
+		std::cerr << "threads stopped\n";
 		this->finish();
+		
 	}
 
 	virtual void reset() {
@@ -269,7 +272,23 @@ private:
 		return n0;
 	}
 
+	inline void reset_sync(){
+		worker_start = std::vector<std::condition_variable>(num_threads);
+		worker_done = std::vector<std::condition_variable>(num_threads);
+		locks = std::vector<std::mutex>(num_threads);
+		node_to_expand = std::vector<Node *>(num_threads, nullptr);
+		children = std::vector<std::vector<Node *>>(num_threads);
+		thread_state = std::vector<ThreadState>(num_threads, ThreadState::expanded);
+	}
+
 	OpenList<Node, Node, Cost> open;
 	boost::unordered_flat_map<PackedState, Node*, StateHasher, StateEq> closed;
-	Pool<Node> *nodes;
+	Pool<Node> * nodes;
+	std::size_t num_threads;
+	std::vector<std::condition_variable> worker_start;
+	std::vector<std::condition_variable> worker_done;
+	std::vector<std::mutex> locks;
+	std::vector<Node *> node_to_expand;
+	std::vector<std::vector<Node *>> children;
+	std::vector<ThreadState> thread_state;
 };
