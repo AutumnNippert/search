@@ -24,7 +24,8 @@ template <class D> struct AstarBasic : public SearchAlgorithm<D> {
 			return const_cast<PackedState&>(s).hash(nullptr);
 		}
 	};
-	
+
+
 	struct Node {
 		ClosedEntry<Node, D> closedent;
 		int openind;
@@ -72,6 +73,14 @@ template <class D> struct AstarBasic : public SearchAlgorithm<D> {
 		}
 	};
 
+	static inline void dump_closed(std::ostream& stream, const boost::unordered_flat_map<PackedState, Node *, StateHasher, StateEq>& c){
+		stream << "Closed:\n";
+		for (const auto & elem: c){
+			stream << *((std::size_t *)(&elem.first)) << ": " << *elem.second << "\n";
+		}
+		stream << "\n";
+	}
+
 	AstarBasic(int argc, const char *argv[]) :
 		SearchAlgorithm<D>(argc, argv) {
 		nodes = new Pool<Node>();
@@ -89,11 +98,12 @@ template <class D> struct AstarBasic : public SearchAlgorithm<D> {
 		closed.emplace(n0->state, n0);
 		open.push(n0);
 
-		while (!open.empty() && !SearchAlgorithm<D>::limit() && SearchAlgorithm<D>::res.expd < 500) {
+		while (!open.empty() && !SearchAlgorithm<D>::limit()) {
 			// std::cout << "Open Pull" << std::endl;
 			Node *n = open.pop();
-			std::cerr << "pop:"<<*n << "\n";
-			std::cerr << open << std::endl;
+			// std::cerr << "pop:"<<*n << "\n";
+			// dump_closed(std::cerr, closed);
+			// std::cerr << open << std::endl;
 			State buf, &state = d.unpack(buf, n->state);
 			
 			// std::cout << "Popped Node: " << *n << std::endl;
@@ -155,7 +165,7 @@ private:
 					nodes->destruct(kid);
 					continue;
 				}
-				std::cerr << "duplicate:" << *kid << " " << *dup << " same state? "<< StateEq()(kid->state, dup->state) << "\n";
+				// std::cerr << "duplicate:" << *kid << " " << *dup << " same state? "<< StateEq()(kid->state, dup->state) << "\n";
 				bool isopen = open.mem(dup);
 				if (isopen)
 					open.pre_update(dup);
@@ -166,7 +176,7 @@ private:
 				dup->pop = e.revop;
 				if (isopen) {
 					open.post_update(dup);
-					std::cerr << open << std::endl;
+					// std::cerr << open << std::endl;
 				} else {
 					this->res.reopnd++;
 					open.push(dup);
@@ -182,8 +192,8 @@ private:
 			// std::cout << "Adding successor " << std::endl;// *kid << std::endl;
 			closed.emplace(kid->state, kid);
 			open.push(kid);
-			std::cerr << "push:" << *kid << "\n";
-			std::cerr << open << "\n";
+			// std::cerr << "push:" << *kid << "\n";
+			// std::cerr << open << "\n";
 		}
 	}
 

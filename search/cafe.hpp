@@ -32,6 +32,7 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 		}
 	};
 
+	
 	struct NodeComp;
 
 	struct Node {
@@ -71,6 +72,15 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 			return Node::pred(&lhs, &rhs);
 		}
 	};
+
+	static inline void dump_closed(std::ostream& stream, const boost::unordered_flat_map<PackedState, HeapNode<Node, NodeComp> *, StateHasher, StateEq>& c){
+		stream << "Closed:\n";
+		for (const auto & elem: c){
+			stream << *((std::size_t *)(&elem.first)) << ": " << elem.second->search_node << "\n";
+		}
+		stream << "\n";
+	}
+
 
 	CAFE(int argc, const char *argv[]):
 	 SearchAlgorithm<D>(argc, argv), open(OPEN_LIST_SIZE){
@@ -135,13 +145,14 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 
 		std::cout << "All Threads Initialized. Beginning Algorithm." << std::endl;
 
-		while (!open.empty() && !SearchAlgorithm<D>::limit() && SearchAlgorithm<D>::res.expd < 500) {	
+		while (!open.empty() && !SearchAlgorithm<D>::limit()) {	
 			// std::cout << "Open Pull" << std::endl;
 			HeapNode<Node, NodeComp>* hn = open.get(0);
 			open.pop();
 			Node* n = &(hn->search_node);
-			std::cerr << "pop:" << *n << "\n";
-			std::cerr << open << std::endl;
+			// std::cerr << "pop:" << *n << "\n";
+			// dump_closed(std::cerr, closed);
+			// std::cerr << open << std::endl;
 
 			State buf, &state = d.unpack(buf, n->state);
 
@@ -190,15 +201,15 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 						continue;
 					}
 					open.decrease_key(dup_hn->handle, successor);
-					std::cerr << "duplicate:" << *kid << " " << dup << " same state? "<< StateEq()(kid->state, dup.state) << "\n";
-					std::cerr << open << "\n";
-					closed.emplace(kid->state, successor); // add to closed list
+					//std::cerr << "duplicate:" << *kid << " " << dup << " same state? "<< StateEq()(kid->state, dup.state) << "\n";
+					//std::cerr << open << "\n";
+					closed[kid->state] = successor; // add to closed list
 				}
 				else{
 					open.push(successor); // add to open list
-					std::cerr << "push:" << successor->search_node << "\n";
-					std::cerr << open << "\n";
-					closed.emplace(kid->state, successor); // add to closed list
+					// std::cerr << "push:" << successor->search_node << "\n";
+					// std::cerr << open << "\n";
+					closed[kid->state] = successor; // add to closed list
 				}
 				
 				// std::cout << "Adding successor " << std::endl;

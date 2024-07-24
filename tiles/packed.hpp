@@ -45,6 +45,13 @@ public:
 	bool eq(const void*, PackedTiles &o) const {
 		return memcmp(bytes, o.bytes, sizeof(bytes)) == 0;
 	}
+
+	void dump(std::ostream& stream) const{
+		for (int i = 0; i < sizeof(bytes); i++){
+			stream << bytes[i];
+		}
+	}
+
 };
 
 template<int Ntiles> class PackedTiles64 {
