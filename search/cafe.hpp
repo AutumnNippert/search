@@ -96,7 +96,7 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 		// delete nodes;
 	}
 
-	void thread_speculate(D &d, std::stop_token& token){
+	void thread_speculate(D &d, std::stop_token token){
 		NodePool<Node, NodeComp> nodes(OPEN_LIST_SIZE);
 		while(!token.stop_requested()){
 			HeapNode<Node, NodeComp> *hn = open.fetch_work();
@@ -132,8 +132,7 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 
 		// Create threads after initial node is pushed
 		for (size_t i = 0; i < num_threads - 1; i++){
-			stop_token st = stop_source.get_token();
-			threads.emplace_back(&CAFE::thread_speculate, this, std::ref(d), std::ref(st));
+			threads.emplace_back(&CAFE::thread_speculate, this, std::ref(d), stop_source.get_token());
 		}
 
 		//start_latch.arrive_and_wait(); // because the main thread starts before the threads. On small problems, I hypothesize this causes threads to never stop as the main thread exits too quickly or something along those lines.
@@ -158,11 +157,13 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 
 			if (d.isgoal(state)) {
 				solpath<D, Node>(d, n, this->res);
-
+				std::cerr << "Goal found!\n";
 				stop_source.request_stop();
-				for (auto& thread : threads){
-					thread.join();
-				}
+				// for (auto& thread : threads){
+				// 	thread.join();
+				// 	std::cerr << "joined!";
+				// }
+				std::cerr << "\n";
 
 				std::cout << "Speculated Nodes Expanded: " << speculated_nodes_expanded << std::endl;
 				std::cout << "Manual Expansions: " << manual_expansions << std::endl;
