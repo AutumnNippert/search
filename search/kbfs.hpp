@@ -4,8 +4,9 @@
 #include "../utils/pool.hpp"
 
 #include <barrier> // for worker synchronization
+#include <stop_token> // for stopping the threads
 
-#define THREAD_COUNT 4
+#define THREAD_COUNT 2
 
 std::barrier start_barrier{THREAD_COUNT+1};
 std::barrier complete_barrier{THREAD_COUNT+1};
@@ -17,9 +18,20 @@ template <class D> struct KBFS : public SearchAlgorithm<D> {
 	typedef typename D::PackedState PackedState;
 	typedef typename D::Cost Cost;
 	typedef typename D::Oper Oper;
+
+	struct StateEq{
+		inline bool operator()(const PackedState& s, const PackedState& o) const{
+			return s.eq(nullptr, o);
+		}
+	};
+
+	struct StateHasher{
+		inline unsigned long operator()(const PackedState& s) const{
+			return const_cast<PackedState&>(s).hash(nullptr);
+		}
+	};
 	
 	struct Node {
-		ClosedEntry<Node, D> closedent;
 		int openind;
 		Node *parent;
 		PackedState state;
@@ -27,10 +39,6 @@ template <class D> struct KBFS : public SearchAlgorithm<D> {
 		Cost f, g;
 
 		Node() : openind(-1) {
-		}
-
-		static ClosedEntry<Node, D> &closedentry(Node *n) {
-			return n->closedent;
 		}
 
 		static PackedState &key(Node *n) {
@@ -61,7 +69,7 @@ template <class D> struct KBFS : public SearchAlgorithm<D> {
 	};
 
 	KBFS(int argc, const char *argv[]) :
-		SearchAlgorithm<D>(argc, argv), closed(30000001) {
+		SearchAlgorithm<D>(argc, argv) {
 		nodes = new Pool<Node>();
 	}
 
@@ -69,15 +77,16 @@ template <class D> struct KBFS : public SearchAlgorithm<D> {
 		delete nodes;
 	}
 
-	void worker(D &d, size_t id, Node** top_nodes, std::vector<Node*>* expanded_nodes, std::stop_token& token){
+	void worker(D &d, size_t id, Node** top_nodes, std::vector<Node*>* expanded_nodes, std::stop_token token){
 		while(!token.stop_requested()){
+			std::cerr << "Thread " << id << " waiting for start" << std::endl;
 			start_barrier.arrive_and_wait();
-			if(token.stop_requested()) return;
+			if(token.stop_requested()) break;
 
 			// check topNodes[id] for the node* to expand
 			Node* n = top_nodes[id];
 			if(n == nullptr){
-				std::cout << "Thread " << id << "has no node to expand.";
+				std::cout << "Thread " << id << " has no node to expand." << std::endl;
 				// no node to expand in top_nodes[id]
 				expanded_nodes[id] = std::vector<Node*>();
 				complete_barrier.arrive_and_wait();
@@ -87,19 +96,23 @@ template <class D> struct KBFS : public SearchAlgorithm<D> {
 			auto successors = expand(d, n, state);
 			// should be a vector of nodes
 			expanded_nodes[id] = successors;
+			
+			std::cerr << "Thread " << id << " waiting to complete" << std::endl;
 			complete_barrier.arrive_and_wait();
 		}
+		start_barrier.arrive_and_drop();
+		std::cerr << "Thread " << id << " stopped" << std::endl;
 	}
 
 	void search(D &d, typename D::State &s0) {
 		//kpbfs main thread
-		const size_t k = 2;
+		const size_t k = THREAD_COUNT;
 
 		this->start();
-		closed.init(d);
+		// closed.init(d);
 
 		Node *n0 = init(d, s0);
-		closed.add(n0);
+		closed.emplace(n0->state, n0);
 		open.push(n0);
 
 		bool found = false;
@@ -116,7 +129,7 @@ template <class D> struct KBFS : public SearchAlgorithm<D> {
 		
 		for (size_t i = 0; i < k; i++){
 			stop_token st = stop_source.get_token();
-			threads.emplace_back(&KBFS::worker, this, std::ref(d), i, std::ref(top_nodes), std::ref(expanded_nodes), std::ref(st));
+			threads.emplace_back(&KBFS::worker, this, std::ref(d), i, std::ref(top_nodes), std::ref(expanded_nodes), st);
 		}
 
 		std::cout << "Threads created" << std::endl;
@@ -132,28 +145,40 @@ template <class D> struct KBFS : public SearchAlgorithm<D> {
 				top_nodes[i] = open.pop();
 			}
 			start_barrier.arrive_and_wait(); // Starts the threads on expansion
-			if (loops % 10000) std::cout << "homies should be chuggin: " << loops << std::endl;
+			if (loops %10000 == 0){
+				std::cout << "homies should be chuggin: " << loops << std::endl;
+			}
 			loops++;
+
+			std::cout << "Main: Waiting for threads to complete" << std::endl;
 			complete_barrier.arrive_and_wait(); // Waits for all the threads to complete
+			std::cout << "Main: Threads completed" << std::endl;
+
+
 
 			// add all to open
 			for (size_t i = 0; i < k; i++) {
 				std::vector<Node*> exp_nodes = expanded_nodes[i];
+				SearchAlgorithm<D>::res.expd++;
 				for (Node* kid : exp_nodes){
 					State buf, &state = d.unpack(buf, kid->state);
 					if (d.isgoal(state)) {
 						solpath<D, Node>(d, kid, this->res);
 						stop_source.request_stop();
+						std::cerr << "Main: Request Stop" << std::endl;
+						// start barrier to stop the threads
+						start_barrier.arrive_and_drop();
 						for (auto& thread : threads){
 							thread.join();
 						}
 						found = true;
 						break;
 					}
+					SearchAlgorithm<D>::res.gend++;
 
-					unsigned long hash = kid->state.hash(&d);
-					Node *dup = closed.find(kid->state, hash);
-					if (dup) {
+					auto dup_it = closed.find(kid->state);
+					if (dup_it != closed.end()) { // if its in closed, check if dup is better
+						Node *dup = dup_it->second;
 						this->res.dups++;
 						if (kid->g >= dup->g) { // kid is worse so don't bother
 							nodes->destruct(kid);
@@ -167,7 +192,7 @@ template <class D> struct KBFS : public SearchAlgorithm<D> {
 						dup->g = kid->g;
 						dup->parent = kid;
 						dup->op = kid->op;
-						// dup->pop = e.revop; // I literally can't find what e.revop is
+						dup->pop = kid->pop; // TODO: This might not be correct
 						if (isopen) {
 							open.post_update(dup);
 						} else {
@@ -179,7 +204,7 @@ template <class D> struct KBFS : public SearchAlgorithm<D> {
 					}
 					// add to closed and open
 					// cout << "Adding a child to open" << endl;
-					closed.add(kid, hash);
+					closed.emplace(kid->state, kid);
 					open.push(kid);
 				}
 				if(found) break;
@@ -195,29 +220,28 @@ template <class D> struct KBFS : public SearchAlgorithm<D> {
 	virtual void reset() {
 		SearchAlgorithm<D>::reset();
 		open.clear();
-		closed.clear();
+		// closed.clear();
 		delete nodes;
 		nodes = new Pool<Node>();
 	}
 
 	virtual void output(FILE *out) {
 		SearchAlgorithm<D>::output(out);
-		closed.prstats(stdout, "closed ");
-		dfpair(stdout, "open list type", "%s", open.kind());
+		// closed.prstats(stdout, "closed ");
+		// dfpair(stdout, "open list type", "%s", open.kind());
+		dfpair(stdout, "open list type", "%s", "boost::unordered_flat_map");
 		dfpair(stdout, "node size", "%u", sizeof(Node));
 	}
 
 private:
 
 	std::vector<Node*> expand(D &d, Node *n, State &state) {
-		SearchAlgorithm<D>::res.expd++;
 		std::vector<Node*> children;
 
 		typename D::Operators ops(d, state);
 		for (unsigned int i = 0; i < ops.size(); i++) {
 			if (ops[i] == n->pop)
 				continue;
-			SearchAlgorithm<D>::res.gend++;
 
 			Node *kid = nodes->construct();
 			assert (kid);
@@ -246,6 +270,6 @@ private:
 	}
 
 	OpenList<Node, Node, Cost> open;
- 	ClosedList<Node, Node, D> closed;
+	boost::unordered_flat_map<PackedState, Node*, StateHasher, StateEq> closed;
 	Pool<Node> *nodes;
 };
