@@ -5,6 +5,8 @@
 #include <boost/unordered/unordered_flat_map.hpp>
 #include <unistd.h>
 
+#include <cmath>
+
 // For multithreading
 #include <latch>
 #include <thread>
@@ -86,8 +88,15 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 	 SearchAlgorithm<D>(argc, argv), open(OPEN_LIST_SIZE){
 		num_threads = 1;
 		for (int i = 0; i < argc; i++) {
-			if (strcmp(argv[i], "-threads") == 0)
+			if (strcmp(argv[i], "-threads") == 0){
 				num_threads = strtod(argv[++i], NULL);
+				if(num_threads <= 0 ) {
+					exit(1);
+				}
+			}
+			if (strcmp(argv[i], "-exp") == 0){
+				extra_calcs = strtod(argv[++i], NULL);
+			}
 		}
 		// nodes = new NodePool<Node, NodeComp>(OPEN_LIST_SIZE);
 	}
@@ -99,16 +108,22 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 	void thread_speculate(D &d, std::stop_token token){
 		NodePool<Node, NodeComp> nodes(OPEN_LIST_SIZE);
 		while(!token.stop_requested()){
+			auto start = std::chrono::high_resolution_clock::now();
 			HeapNode<Node, NodeComp> *hn = open.fetch_work();
 			if(hn == nullptr){
+				thread_misses++;
 				continue;
 			}
+			auto end = std::chrono::high_resolution_clock::now();
+			std::chrono::duration<double> elapsed_seconds = end - start;
+			average_thread_fetch_time = (average_thread_fetch_time * nodes_speculated + elapsed_seconds.count()) / (nodes_speculated + 1);
 
 			Node* n = &(hn->search_node);
 			State buf, &state = d.unpack(buf, n->state);
 
 			auto successor_ret = expand(d, hn, nodes, state);
 			hn->set_completed(successor_ret.first, successor_ret.second);
+			nodes_speculated++;
 		}
 	}
 
@@ -139,13 +154,14 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 
 		// get time after threads are initialized
 		auto end = std::chrono::high_resolution_clock::now();
+		auto algo_start = std::chrono::high_resolution_clock::now();
 		std::chrono::duration<double> elapsed_seconds = end - start;
-		std::cout << "Time to Initialize Threads: " << elapsed_seconds.count() << std::endl;
+		std::cerr << "Time to Initialize Threads: " << elapsed_seconds.count() << std::endl;
 
-		std::cout << "All Threads Initialized. Beginning Algorithm." << std::endl;
+		std::cerr << "All Threads Initialized. Beginning Algorithm." << std::endl;
 
 		while (!open.empty() && !SearchAlgorithm<D>::limit()) {	
-			// std::cout << "Open Pull" << std::endl;
+			// std::cerr << "Open Pull" << std::endl;
 			HeapNode<Node, NodeComp>* hn = open.get(0);
 			open.pop();
 			Node* n = &(hn->search_node);
@@ -163,25 +179,60 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 				// 	thread.join();
 				// 	std::cerr << "joined!";
 				// }
-				std::cerr << "\n";
 
-				std::cout << "Speculated Nodes Expanded: " << speculated_nodes_expanded << std::endl;
-				std::cout << "Manual Expansions: " << manual_expansions << std::endl;
+				auto algo_end = std::chrono::high_resolution_clock::now();
+				std::chrono::duration<double> elapsed_seconds_algo = algo_end - algo_start;
+
+				std::cerr << "\n";
+				std::cerr << "Total Time Taken: " << elapsed_seconds_algo.count() << " sec" << std::endl; 
+				std::cerr << "Total Nodes Observed: " << total_nodes_observed << std::endl;
+				std::cerr << "Total Speculated Nodes: " << nodes_speculated << std::endl;
+				std::cerr << std::endl;
+				std::cerr << "Speculated Nodes Expanded: " << speculated_nodes_expanded << std::endl;
+				std::cerr << "Manual Expansions: " << manual_expansions << std::endl;
+				std::cerr << "Time Spent Yielding: " << time_spent_yielding << " sec" << std::endl;
+				std::cerr << "Total Sum: " << total_sum << std::endl;
+				std::cerr << std::endl;
+				std::cerr << "Average Expansion Time: " << average_expansion_time << " sec" << std::endl;
+				std::cerr << std::endl;
+				std::cerr << "Average Thread Fetch Time: " << average_thread_fetch_time << " sec" << std::endl;
+				std::cerr << "CPU Time Spent Fetching: " << average_thread_fetch_time * nodes_speculated << " sec" << std::endl;
+				std::cerr << "Thread Misses: " << thread_misses << std::endl;
+				std::cerr << std::endl;
+				std::cerr << "Expansion Rate: " << SearchAlgorithm<D>::res.expd / elapsed_seconds_algo.count() << "/sec" << std::endl;
+				std::cerr << "Observe Rate: " << total_nodes_observed / elapsed_seconds_algo.count() << "/sec" << std::endl;
+				std::cerr << std::endl;
 				break;
 			}
 			SearchAlgorithm<D>::res.expd++;
 			std::pair<HeapNode<Node, NodeComp> *, std::size_t> successor_ret;
-			if(hn->is_completed()){
-				// std::cout << "Speculated Node Expanded" << std::endl;
-				speculated_nodes_expanded++;
-				successor_ret = hn->get_successors();
-			}else{
-				// std::cout << "Manual Expansion" << std::endl;
+			// if(hn->is_completed()){
+			// 	// std::cerr << "Speculated Node Expanded" << std::endl;
+			// 	speculated_nodes_expanded++;
+			// 	successor_ret = hn->get_successors();
+			// }else{
+			// 	// std::cerr << "Manual Expansion" << std::endl;
+			// 	manual_expansions++;
+			// 	successor_ret = expand(d, hn, nodes, state);
+			// }
+
+			if(hn->reserve()){
+				// expand manually
 				manual_expansions++;
 				successor_ret = expand(d, hn, nodes, state);
+			}else{
+				// wait for speculation
+				// start timer
+				auto start_yield = std::chrono::high_resolution_clock::now();
+				while(!hn->is_completed()){
+					std::this_thread::yield();
+				}
+				auto end_yield = std::chrono::high_resolution_clock::now();
+				std::chrono::duration<double> elapsed_seconds_yield = end_yield - start_yield;
+				time_spent_yielding += elapsed_seconds_yield.count();
+				speculated_nodes_expanded++;
+				successor_ret = hn->get_successors();
 			}
-
-			
 
 			HeapNode<Node, NodeComp>* successors = successor_ret.first;
 			size_t n_precomputed_successors = successor_ret.second;
@@ -213,7 +264,7 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 					closed[kid->state] = successor; // add to closed list
 				}
 				
-				// std::cout << "Adding successor " << std::endl;
+				// std::cerr << "Adding successor " << std::endl;
 			}
 		}
 		this->finish();
@@ -236,7 +287,22 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 
 private:
 	size_t num_threads;
+	size_t total_nodes_observed = 0;
+	size_t nodes_speculated = 0;
+
+	long double average_thread_fetch_time = 0; // including finding a node
+	size_t thread_misses = 0;
+	
+	long double average_expansion_time = 0;
+	long double time_spent_yielding = 0;
+
+	long double total_sum = 0;
+
+	size_t extra_calcs = 0;
+	
+
 	std::pair<HeapNode<Node, NodeComp> *, std::size_t> expand(D& d, HeapNode<Node, NodeComp> * hn, NodePool<Node, NodeComp> &nodes, State& state) {
+		auto start = std::chrono::high_resolution_clock::now();
 		Node * n = &(hn->search_node);
 
 		typename D::Operators ops(d, state);
@@ -260,12 +326,25 @@ private:
 			kid->op = ops[i];
 			kid->pop = e.revop;
 			
-			// std::cout << "Generated Node: " << *kid << std::endl;
+			// std::cerr << "Generated Node: " << *kid << std::endl;
 		}
 		// print each successor
 		// for (unsigned int i = 0; i < successor_count; i++) {
-		// 	std::cout << "expand(): Viewing Successors " << i << ": " << successors[i].search_node << std::endl;
+		// 	std::cerr << "expand(): Viewing Successors " << i << ": " << successors[i].search_node << std::endl;
 		// }
+
+		// wait function
+		long double sum = 0;
+		for(size_t i = 0; i < extra_calcs; i++){
+			sum = sin(sum + rand());
+		}
+		total_sum += sum;
+
+		auto end = std::chrono::high_resolution_clock::now();
+		std::chrono::duration<double> elapsed_seconds = end - start;
+		average_expansion_time = (average_expansion_time * total_nodes_observed + elapsed_seconds.count()) / (total_nodes_observed + 1);
+		total_nodes_observed++;
+
 		return std::make_pair(successors, successor_count);
 	}
 
