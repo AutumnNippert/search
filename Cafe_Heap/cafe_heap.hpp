@@ -211,13 +211,21 @@ class CafeMinBinaryHeap{
             return size.load(std::memory_order_relaxed) == 0;
         }
 
-        inline HeapNode<Node_t, Compare> * fetch_work() const{  // for worker
+        inline HeapNode<Node_t, Compare> * fetch_work(size_t start_depth) const{  // for worker
             std::size_t s = size.load(std::memory_order_acquire);
-            for(std::size_t i = 0; i < s; i++){
-                HeapNode<Node_t, Compare> * n = _data[i];
-                if(n->reserve()){
-                    return n;
+            std::size_t depth = start_depth;  // start at the depth, and go up
+            while(depth < s){
+                for (std::size_t i = 0; i < depth; i++){
+                    if (i >= s){ // it was segfaulting, This shouldn't be necessary but i guess the open list must change size during the search
+                        return nullptr;
+                    }
+                    HeapNode<Node_t, Compare> * n = _data[i].load(std::memory_order_acquire);
+                    if(n->reserve()){
+                        return n;
+                    }
                 }
+                s = size.load(std::memory_order_acquire);
+                depth*=2;
             }
             return nullptr;
         }
@@ -265,6 +273,10 @@ class CafeMinBinaryHeap{
             stream << heap._data[i].load()->search_node << "\n";
             dump(stream, heap, left_child(i), depth + 1);
             dump(stream, heap, right_child(i), depth + 1);
+        }
+
+        inline size_t get_size() const{
+            return size.load();
         }
 
         inline friend std::ostream& operator<<(std::ostream& stream, const CafeMinBinaryHeap<Node_t, Compare>& heap){
