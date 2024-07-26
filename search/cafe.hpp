@@ -199,35 +199,22 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 				std::cerr << "Observe Rate: " << total_nodes_observed / elapsed_seconds_algo.count() << "/sec" << std::endl;
 				std::cerr << std::endl;
 
-				// create an array of the size of the open list
-				// iterate through the open list and add the node delay (difference between n->nodes_expanded_at_time_of_expansion and it's parent's nodes_expanded_at_time_of_expansion) to the array to form a histogram
-				// print the histogram
-				std::vector<size_t> node_delays(open.get_size());
-				for(size_t i = 0; i < open.get_size(); i++){
-					HeapNode<Node, NodeComp>* hn = open.get(i);
-					Node* n = &(hn->search_node);
-					if(n->parent != nullptr){
-						node_delays[i] = n->nodes_expanded_at_time_of_expansion - n->parent->nodes_expanded_at_time_of_expansion;
-					}else{
-						node_delays[i] = 0;
-					}
+				// print histogram of node delays
+				std::cerr << "Node Delays: " << std::endl;
+				// bucket the delays in groups of 1000 (doesn't mean there are only 1000 buckets)
+				// get size and divide by 1000 to get count of buckets
+				size_t bucket_size = 100;
+				size_t num_buckets = (OPEN_LIST_SIZE / bucket_size) + 1;
+				std::vector<size_t> buckets = std::vector<size_t>(num_buckets, 0);
+				for(size_t i = 0; i < OPEN_LIST_SIZE; i++){
+					if (node_delays[i] == 0)
+						continue;
+					buckets[node_delays[i] / bucket_size]++;
 				}
-				// bucket the node delays into a histogram of buckets of size 1000
-				std::vector<size_t> histogram(1000, 0);
-				for(size_t i = 0; i < node_delays.size(); i++){
-					size_t bucket = node_delays[i] / 100000;
-					if(bucket >= histogram.size()){
-						bucket = histogram.size() - 1;
-					}
-					histogram[bucket]++;
+				for(size_t i = 0; i < num_buckets; i++){
+					if (buckets[i] != 0)
+						std::cerr << i * bucket_size << " - " << (i+1) * bucket_size << ": " << buckets[i] << std::endl;
 				}
-
-				std::cerr << "Node Delay Histogram: " << std::endl;
-				for(size_t i = 0; i < histogram.size(); i++){
-					std::cerr << i << ": " << histogram[i] << std::endl;
-				}
-				
-				break;
 			}
 			SearchAlgorithm<D>::res.expd++;
 			std::pair<HeapNode<Node, NodeComp> *, std::size_t> successor_ret;
@@ -316,6 +303,9 @@ private:
 	long double total_sum = 0;
 
 	size_t extra_calcs = 0;
+
+	// make atomic vector of size 1 million all set to 0
+	std::vector<size_t> node_delays = std::vector<size_t>(OPEN_LIST_SIZE, 0);
 	
 
 	std::pair<HeapNode<Node, NodeComp> *, std::size_t> expand(D& d, HeapNode<Node, NodeComp> * hn, NodePool<Node, NodeComp> &nodes, State& state) {
@@ -342,6 +332,9 @@ private:
 			kid->parent = n;
 			kid->op = ops[i];
 			kid->pop = e.revop;
+			kid->nodes_expanded_at_time_of_expansion = SearchAlgorithm<D>::res.expd;
+			// std::cerr << kid->nodes_expanded_at_time_of_expansion - n->nodes_expanded_at_time_of_expansion << std::endl;
+			node_delays[kid->nodes_expanded_at_time_of_expansion - n->nodes_expanded_at_time_of_expansion]++;
 		}
 		
 		long double sum = 0;
@@ -354,8 +347,6 @@ private:
 		// std::chrono::duration<double> elapsed_seconds = end - start;
 		// average_expansion_time = (average_expansion_time * total_nodes_observed + elapsed_seconds.count()) / (total_nodes_observed + 1);
 		total_nodes_observed++;
-
-		n->nodes_expanded_at_time_of_expansion = SearchAlgorithm<D>::res.expd;
 
 		return std::make_pair(successors, successor_count);
 	}
