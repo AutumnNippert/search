@@ -89,15 +89,18 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 			if (strcmp(argv[i], "-threads") == 0)
 				num_threads = strtod(argv[++i], NULL);
 		}
-		// nodes = new NodePool<Node, NodeComp>(OPEN_LIST_SIZE);
+		node_pools.reserve(num_threads);
+		for (int i = 0; i < num_threads; i++){
+			node_pools.emplace_back(OPEN_LIST_SIZE);
+		}
 	}
 
 	~CAFE() {
 		// delete nodes;
 	}
 
-	void thread_speculate(D &d, std::stop_token token){
-		NodePool<Node, NodeComp> nodes(OPEN_LIST_SIZE);
+	void thread_speculate(D &d, std::stop_token token, NodePool<Node, NodeComp>& nodes){
+		// NodePool<Node, NodeComp> nodes(OPEN_LIST_SIZE);
 		while(!token.stop_requested()){
 			HeapNode<Node, NodeComp> *hn = open.fetch_work();
 			if(hn == nullptr){
@@ -123,16 +126,16 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 		std::vector<std::jthread> threads;
 		std::stop_source stop_source;
 		//std::latch start_latch(num_threads + 1);
-
-		NodePool<Node, NodeComp> nodes(OPEN_LIST_SIZE);
+		
+		auto& nodes = node_pools[0];
 
 		HeapNode<Node, NodeComp> * hn0 = init(d, nodes, s0);
 		closed.emplace(hn0->search_node.state, hn0);
 		open.push(hn0);
 
 		// Create threads after initial node is pushed
-		for (size_t i = 0; i < num_threads - 1; i++){
-			threads.emplace_back(&CAFE::thread_speculate, this, std::ref(d), stop_source.get_token());
+		for (size_t i = 1; i < num_threads; i++){
+			threads.emplace_back(&CAFE::thread_speculate, this, std::ref(d), stop_source.get_token(), std::ref(node_pools[i]));
 		}
 
 		//start_latch.arrive_and_wait(); // because the main thread starts before the threads. On small problems, I hypothesize this causes threads to never stop as the main thread exits too quickly or something along those lines.
@@ -216,7 +219,9 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 				// std::cout << "Adding successor " << std::endl;
 			}
 		}
+		std::cerr << "search done\n";
 		this->finish();
+		std::cerr << "search finished\n";
 	}
 
 	virtual void reset() {
@@ -236,6 +241,7 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 
 private:
 	size_t num_threads;
+	std::vector<NodePool<Node, NodeComp>> node_pools;
 	std::pair<HeapNode<Node, NodeComp> *, std::size_t> expand(D& d, HeapNode<Node, NodeComp> * hn, NodePool<Node, NodeComp> &nodes, State& state) {
 		Node * n = &(hn->search_node);
 

@@ -74,10 +74,11 @@ template<class D> Result<D> searchGet(SearchAlgorithm<D>*(*get)(int, const char 
 		dfpair(stdout, "final sol cost", "%f", -1.0);
 	}
 	srch->output(stdout);
-
+	std::cerr << "printed\n";
 	Result<D> res = srch->res;
+	std::cerr << "deleting\n";
 	delete srch;
-
+	std::cerr << "deleted\n";
 	return res;
 }
 
