@@ -101,15 +101,18 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 				extra_calcs = strtod(argv[++i], NULL);
 			}
 		}
-		// nodes = new NodePool<Node, NodeComp>(OPEN_LIST_SIZE);
+		node_pools.reserve(num_threads);
+		for (size_t i = 0; i < num_threads; i++){
+			node_pools.emplace_back(OPEN_LIST_SIZE);
+		}
 	}
 
 	~CAFE() {
 		// delete nodes;
 	}
 
-	void thread_speculate(D &d, std::stop_token token){
-		NodePool<Node, NodeComp> nodes(OPEN_LIST_SIZE);
+	void thread_speculate(D &d, std::stop_token token, NodePool<Node, NodeComp>& nodes){
+		// NodePool<Node, NodeComp> nodes(OPEN_LIST_SIZE);
 		while(!token.stop_requested()){
 			// auto start = std::chrono::high_resolution_clock::now();
 			HeapNode<Node, NodeComp> *hn = open.fetch_work(16);
@@ -140,16 +143,17 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 
 		std::vector<std::jthread> threads;
 		std::stop_source stop_source;
-
-		NodePool<Node, NodeComp> nodes(OPEN_LIST_SIZE);
+		//std::latch start_latch(num_threads + 1);
+		
+		auto& nodes = node_pools[0];
 
 		HeapNode<Node, NodeComp> * hn0 = init(d, nodes, s0);
 		closed.emplace(hn0->search_node.state, hn0);
 		open.push(hn0);
 
 		// Create threads after initial node is pushed
-		for (size_t i = 0; i < num_threads - 1; i++){
-			threads.emplace_back(&CAFE::thread_speculate, this, std::ref(d), stop_source.get_token());
+		for (size_t i = 1; i < num_threads; i++){
+			threads.emplace_back(&CAFE::thread_speculate, this, std::ref(d), stop_source.get_token(), std::ref(node_pools[i]));
 		}
 
 		auto end = std::chrono::high_resolution_clock::now();
@@ -215,6 +219,8 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 					if (buckets[i] != 0)
 						std::cerr << i * bucket_size << " - " << (i+1) * bucket_size << ": " << buckets[i] << std::endl;
 				}
+
+				break;
 			}
 			SearchAlgorithm<D>::res.expd++;
 			std::pair<HeapNode<Node, NodeComp> *, std::size_t> successor_ret;
@@ -265,13 +271,15 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 					closed[kid->state] = successor;
 				}
 				else{
-					open.push(successor);
-					closed[kid->state] = successor;
+					open.push(successor); // add to open list
+					closed[kid->state] = successor; // add to closed list
 				}
 				
 			}
 		}
+		std::cerr << "search done\n";
 		this->finish();
+		std::cerr << "search finished\n";
 	}
 
 	virtual void reset() {
@@ -308,8 +316,9 @@ private:
 	std::vector<size_t> node_delays = std::vector<size_t>(OPEN_LIST_SIZE, 0);
 	
 
+	std::vector<NodePool<Node, NodeComp>> node_pools;
 	std::pair<HeapNode<Node, NodeComp> *, std::size_t> expand(D& d, HeapNode<Node, NodeComp> * hn, NodePool<Node, NodeComp> &nodes, State& state) {
-		auto start = std::chrono::high_resolution_clock::now();
+		// auto start = std::chrono::high_resolution_clock::now();
 		Node * n = &(hn->search_node);
 
 		typename D::Operators ops(d, state);
