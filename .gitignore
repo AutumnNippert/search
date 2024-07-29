@@ -55,7 +55,10 @@ traffic/watch
 unknowngridnav/watch
 
 labyrinth/*
-algocomp_res/*
+
+algocomp_res/
+korftest/
+tmp
 
 .vscode
 *.vw
