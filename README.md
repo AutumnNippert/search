@@ -35,9 +35,9 @@ Also make sure that the domain you are trying to run the algorithm on has a prob
 
 ## Runnning algocomp
 ```sh
-python3 algocomp.py <path to executable> <path to folder to test in> [algo1 -args:algo2 -args...]
+python3 python/algocomp.py <path to executable> <path to folder to test in> [algo1 -args:algo2 -args...]
 ```
 Example
 ```sh
-python3 algocomp.py ./tiles/15md_solver ./korf100/ astar-basic:cafe -threads 2:kbfs -threads 4
+python3 python/algocomp.py ./tiles/15md_solver ./korf100/ astar-basic:cafe -threads 2:kbfs -threads 4
 ```

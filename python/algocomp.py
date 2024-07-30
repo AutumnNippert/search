@@ -172,7 +172,7 @@ def parse_output_text(match, output):
     return None
 
 def parse_cpu_time(output):
-    return parse_output_text("total raw cpu time", output)
+    return parse_output_text("total wall time", output)
 
 cumulative_times = {}
 algo_json_results = {} # key: algo, value: list of AlgoResult
@@ -202,7 +202,7 @@ for file in lst: # non inclusive
         output = f.read()
         cpu_time = parse_cpu_time(output)
         if cpu_time is None:
-            print(f"Error: The program was unable to parse the cpu time of {algo}")
+            print(f"Error: The program was unable to parse the wall time of {algo}")
             continue
         print(f"{algo}: {cpu_time}")
         if algo not in cumulative_times:
@@ -215,6 +215,8 @@ for file in lst: # non inclusive
         if "-threads" in algo:
             algo_json_results[algokey][-1].threads = int(algo.split(" ")[-1])
         f.close()
+        # delete tmp
+        os.remove("tmp")
     
     
     filename = f'./algocomp_res/{file}-{now}.json'
@@ -222,12 +224,17 @@ for file in lst: # non inclusive
 
     # append to json file for each file
     with open(f"{filename}", "w") as f:
-        f.write(json.dumps([x.__dict__ for x in algo_json_results[algo]]))
+        json_data = {}
+        for algo in algo_json_results:
+            json_data[algo] = [x.__dict__ for x in algo_json_results[algo]]
+        f.write(json.dumps(json_data))
         f.close()
 
 print("==========Final Stats==========")
 for algo in algo_list:
-    print(f"{algo: <10}: {cumulative_times[algo]}")
+    algokey = '-'.join(algo.split(" "))
+    algokey = algokey.replace(" ", "")
+    print(f"{algo}: {cumulative_times[algokey]}")
 
 
 # for algo in algo_json_results:
