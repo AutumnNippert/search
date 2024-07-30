@@ -28,22 +28,24 @@ struct NodeComp{
     }
 };
 
-void waste_time(std::size_t n){
+std::size_t waste_time(std::size_t n){
     std::size_t i = 0;
-    volatile std::size_t * pi = &i;
     for(std::size_t j = 0; j < n; j++){
-        *pi += j;
+        i += j;
     }
+    return i;
 }
 
 void thread_speculate(std::stop_token token, CafeMinBinaryHeap<Node, NodeComp>& open, std::size_t slowdown){
-		while(!token.stop_requested()){
+		std::size_t s_i = 0;
+        volatile std::size_t * sum_i = &s_i;
+        while(!token.stop_requested()){
 			// auto start = std::chrono::high_resolution_clock::now();
 			HeapNode<Node, NodeComp> *hn = open.fetch_work();
 			if(hn == nullptr){
 				continue;
 			}
-			waste_time(slowdown);
+			*sum_i += waste_time(slowdown);
 			hn->set_completed((Node *)1, 0);
 		}
 	}
@@ -55,6 +57,8 @@ int main(int argc, char* argv[]){
     if(argc != 3){
         std::cerr << "Usage ...\n"; 
     }
+    std::size_t s_i = 0;
+    volatile std::size_t * sum_i = &s_i;
     std::size_t slowdown = std::stof(argv[1]);
     int workers = std::stof(argv[2]);
     std::vector<std::jthread> threads;
@@ -93,7 +97,7 @@ int main(int argc, char* argv[]){
         // std::cerr << "pop: " << heap.top() << "\n";
         heap.pop();
         if(!n.is_completed()){
-            waste_time(slowdown);
+            *sum_i += waste_time(slowdown);
         }
         // std::cerr << heap;
         assert(heap.heap_property());
