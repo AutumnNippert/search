@@ -88,10 +88,13 @@ int main(int argc, char* argv[]){
 
         }
         // std::cerr << heap; 
-        sum += heap.top().search_node.g;
+        auto& n = heap.top();
+        sum += n.search_node.g;
         // std::cerr << "pop: " << heap.top() << "\n";
         heap.pop();
-        waste_time(slowdown);
+        if(!n.is_completed()){
+            waste_time(slowdown);
+        }
         // std::cerr << heap;
         assert(heap.heap_property());
         assert(heap.check_handles());
