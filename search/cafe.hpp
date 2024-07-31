@@ -15,7 +15,7 @@
 
 #include <atomic>
 
-#define OPEN_LIST_SIZE 200000000
+#define OPEN_LIST_SIZE 20000000
 #define DEBUG true
 
 template <class D> struct CAFE : public SearchAlgorithm<D> {
@@ -120,7 +120,7 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 			// search open_queue
 			bool found = false;
 			HeapNode<Node, NodeComp> *hn = nullptr;
-			for (size_t i = 0; i < open_queue.capacity(); i++){
+			for (size_t i = 0; i < open_queue.size(); i++){
 				if (token.stop_requested()){
 					return;
 				}
@@ -135,13 +135,13 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 				}
 			}
 			// if hn still bad, try to get from open
-			if (!found){
-				hn = open.fetch_work(num_threads*num_threads);
-				if(hn == nullptr){
-					thread_misses++;
-					continue;
-				}
-			}
+			// if (!found){
+			// 	hn = open.fetch_work(num_threads*num_threads);
+			// 	if(hn == nullptr){
+			// 		thread_misses++;
+			// 		continue;
+			// 	}
+			// }
 			// auto end = std::chrono::high_resolution_clock::now();
 			// std::chrono::duration<double> elapsed_seconds = end - start;
 			// average_thread_fetch_time = (average_thread_fetch_time * total_nodes_speculated + elapsed_seconds.count()) / (total_nodes_speculated + 1);
