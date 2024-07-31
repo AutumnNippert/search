@@ -291,11 +291,6 @@ class CafeMinBinaryHeap{
             // for (std::size_t i = 0; i < s; i++){
             //     stream << *heap._data[i] << " ";
             // }
-            dump(stream, heap, 0, 0);
-            // std::size_t s = heap.size.load();
-            // for (std::size_t i = 0; i < s; i++){
-            //     stream << *heap._data[i] << " ";
-            // }
             return stream;
         }
 };
