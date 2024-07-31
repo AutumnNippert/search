@@ -27,12 +27,18 @@ struct HeapNode{
 
         inline bool reserve(){ // Worker thread only
             bool expected = false;
-            return reserved.compare_exchange_strong(expected, true, std::memory_order_acq_rel, std::memory_order_acquire);
+            return reserved.compare_exchange_strong(expected, true, std::memory_order_relaxed);
         }
 
         inline void set_completed(HeapNode<Node_t, Compare> * pre_array, std::size_t n){ // Worker thread only
+        inline void set_completed(HeapNode<Node_t, Compare> * pre_array, std::size_t n){ // Worker thread only
             n_precomputed_successors = n;
             precomputed_successors.store(pre_array, std::memory_order_release);
+        }
+
+         inline void set_completed(void * pre_array, std::size_t n){ // dummy, do not use
+            n_precomputed_successors = n;
+            precomputed_successors.store((HeapNode<Node_t, Compare> *)pre_array, std::memory_order_release);
         }
 
         inline bool is_completed() const{ // For main thread only
@@ -280,6 +286,11 @@ class CafeMinBinaryHeap{
         }
 
         inline friend std::ostream& operator<<(std::ostream& stream, const CafeMinBinaryHeap<Node_t, Compare>& heap){
+            dump(stream, heap, 0, 0);
+            // std::size_t s = heap.size.load();
+            // for (std::size_t i = 0; i < s; i++){
+            //     stream << *heap._data[i] << " ";
+            // }
             dump(stream, heap, 0, 0);
             // std::size_t s = heap.size.load();
             // for (std::size_t i = 0; i < s; i++){
