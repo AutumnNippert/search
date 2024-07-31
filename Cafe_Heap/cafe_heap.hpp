@@ -214,19 +214,19 @@ class CafeMinBinaryHeap{
         inline HeapNode<Node_t, Compare> * fetch_work(size_t start_depth) const{  // for worker
             std::size_t s = size.load(std::memory_order_acquire);
             std::size_t depth = start_depth;  // start at the depth, and go up
-            while(depth < s){
-                for (std::size_t i = 0; i < depth; i++){
-                    if (i >= s){ // it was segfaulting, This shouldn't be necessary but i guess the open list must change size during the search
-                        return nullptr;
-                    }
+            // while(depth < s){
+                for (std::size_t i = 0; i < s; i++){
+                    // if (i >= s){ // it was segfaulting, This shouldn't be necessary but i guess the open list must change size during the search
+                    //     return nullptr;
+                    // }
                     HeapNode<Node_t, Compare> * n = _data[i].load(std::memory_order_acquire);
                     if(n->reserve()){
                         return n;
                     }
                 }
-                s = size.load(std::memory_order_acquire);
-                depth*=2;
-            }
+                // s = size.load(std::memory_order_acquire);
+                // depth*=2;
+            // }
             return nullptr;
         }
 

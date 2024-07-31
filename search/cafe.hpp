@@ -3,6 +3,7 @@
 #include "../search/search.hpp"
 #include "../Cafe_Heap/cafe_heap.hpp"
 #include <boost/unordered/unordered_flat_map.hpp>
+#include <boost/circular_buffer.hpp>
 #include <unistd.h>
 
 #include <cmath>
@@ -15,7 +16,7 @@
 #include <atomic>
 
 #define OPEN_LIST_SIZE 200000000
-#define DEBUG false
+#define DEBUG true
 
 template <class D> struct CAFE : public SearchAlgorithm<D> {
 
@@ -89,7 +90,7 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 
 
 	CAFE(int argc, const char *argv[]):
-	 SearchAlgorithm<D>(argc, argv), open(OPEN_LIST_SIZE){
+	 SearchAlgorithm<D>(argc, argv), open(OPEN_LIST_SIZE), open_queue(64) {
 		num_threads = 1;
 		for (int i = 0; i < argc; i++) {
 			if (strcmp(argv[i], "-threads") == 0){
@@ -116,10 +117,30 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 		// NodePool<Node, NodeComp> nodes(OPEN_LIST_SIZE);
 		while(!token.stop_requested()){
 			// auto start = std::chrono::high_resolution_clock::now();
-			HeapNode<Node, NodeComp> *hn = open.fetch_work(num_threads*num_threads);
-			if(hn == nullptr){
-				thread_misses++;
-				continue;
+			// search open_queue
+			bool found = false;
+			HeapNode<Node, NodeComp> *hn = nullptr;
+			for (size_t i = 0; i < open_queue.capacity(); i++){
+				if (token.stop_requested()){
+					return;
+				}
+				// try to reserve the node
+				hn = open_queue[i];
+				if(hn == nullptr){
+					break; // if the node is null, leave the loop
+				}
+				if (hn->reserve()){
+					found = true;
+					break;
+				}
+			}
+			// if hn still bad, try to get from open
+			if (!found){
+				hn = open.fetch_work(num_threads*num_threads);
+				if(hn == nullptr){
+					thread_misses++;
+					continue;
+				}
 			}
 			// auto end = std::chrono::high_resolution_clock::now();
 			// std::chrono::duration<double> elapsed_seconds = end - start;
@@ -151,6 +172,7 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 		HeapNode<Node, NodeComp> * hn0 = init(d, nodes, s0);
 		closed.emplace(hn0->search_node.state, hn0);
 		open.push(hn0);
+		open_queue.push_back(hn0);
 
 		// Create threads after initial node is pushed
 		for (size_t i = 1; i < num_threads; i++){
@@ -201,38 +223,37 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 					std::cerr << std::endl;
 
 					// print histogram of node delays
-					std::cerr << "Node Delays: " << std::endl;
-					// bucket the delays in groups of 1000 (doesn't mean there are only 1000 buckets)
-					// get size and divide by 1000 to get count of buckets
-					size_t bucket_size = 1;
-					size_t num_buckets = (OPEN_LIST_SIZE / bucket_size) + 1;
-					std::vector<size_t> buckets = std::vector<size_t>(num_buckets, 0);
-					for(size_t i = 0; i < OPEN_LIST_SIZE; i++){
-						if (node_delays[i] == 0)
-							continue;
-						buckets[node_delays[i] / bucket_size]++;
-					}
-					for(size_t i = 0; i < num_buckets; i++){
-						if (buckets[i] != 0)
-							std::cerr << i * bucket_size << " - " << (i+1) * bucket_size << ": " << buckets[i] << std::endl;
-					}
+					// std::cerr << "Node Delays: " << std::endl;
+					// // bucket the delays in groups of 1000 (doesn't mean there are only 1000 buckets)
+					// // get size and divide by 1000 to get count of buckets
+					// size_t bucket_size = 1;
+					// size_t num_buckets = (OPEN_LIST_SIZE / bucket_size) + 1;
+					// std::vector<size_t> buckets = std::vector<size_t>(num_buckets, 0);
+					// for(size_t i = 0; i < OPEN_LIST_SIZE; i++){
+					// 	if (node_delays[i] == 0)
+					// 		continue;
+					// 	buckets[node_delays[i] / bucket_size]++;
+					// }
+					// for(size_t i = 0; i < num_buckets; i++){
+					// 	if (buckets[i] != 0)
+					// 		std::cerr << i * bucket_size << " - " << (i+1) * bucket_size << ": " << buckets[i] << std::endl;
+					// }
 
-					std::cerr << "Speculated Node Delays: " << std::endl;
-					// bucket the delays in groups of 1000 (doesn't mean there are only 1000 buckets)
-					// get size and divide by 1000 to get count of buckets
-					bucket_size = 1;
-					num_buckets = (OPEN_LIST_SIZE / bucket_size) + 1;
-					buckets = std::vector<size_t>(num_buckets, 0);
-					for(size_t i = 0; i < OPEN_LIST_SIZE; i++){
-						if (speculated_node_delays[i] == 0)
-							continue;
-						buckets[speculated_node_delays[i] / bucket_size]++;
-					}
-					for(size_t i = 0; i < num_buckets; i++){
-						if (buckets[i] != 0)
-							std::cerr << i * bucket_size << " - " << (i+1) * bucket_size << ": " << buckets[i] << std::endl;
-					}
-
+					// std::cerr << "Speculated Node Delays: " << std::endl;
+					// // bucket the delays in groups of 1000 (doesn't mean there are only 1000 buckets)
+					// // get size and divide by 1000 to get count of buckets
+					// bucket_size = 1;
+					// num_buckets = (OPEN_LIST_SIZE / bucket_size) + 1;
+					// buckets = std::vector<size_t>(num_buckets, 0);
+					// for(size_t i = 0; i < OPEN_LIST_SIZE; i++){
+					// 	if (speculated_node_delays[i] == 0)
+					// 		continue;
+					// 	buckets[speculated_node_delays[i] / bucket_size]++;
+					// }
+					// for(size_t i = 0; i < num_buckets; i++){
+					// 	if (buckets[i] != 0)
+					// 		std::cerr << i * bucket_size << " - " << (i+1) * bucket_size << ": " << buckets[i] << std::endl;
+					// }
 				}
 				break;
 			}
@@ -286,6 +307,7 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 				else{
 					open.push(successor); // add to open list
 					closed[kid->state] = successor; // add to closed list
+					open_queue.push_back(successor);
 				}
 
 				if (wasSpec){
@@ -393,5 +415,6 @@ private:
 	}
 
 	CafeMinBinaryHeap<Node, NodeComp> open;
+	boost::circular_buffer<HeapNode<Node, NodeComp>*> open_queue;
 	boost::unordered_flat_map<PackedState, HeapNode<Node, NodeComp> *, StateHasher, StateEq> closed;
 };

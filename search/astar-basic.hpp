@@ -84,6 +84,11 @@ template <class D> struct AstarBasic : public SearchAlgorithm<D> {
 	AstarBasic(int argc, const char *argv[]) :
 		SearchAlgorithm<D>(argc, argv) {
 		nodes = new Pool<Node>();
+		for (int i = 0; i < argc; i++) {
+			if (strcmp(argv[i], "-exp") == 0){
+				extra_calcs = strtod(argv[++i], NULL);
+			}
+		}
 	}
 
 	~AstarBasic() {
@@ -195,6 +200,11 @@ private:
 			// std::cerr << "push:" << *kid << "\n";
 			// std::cerr << open << "\n";
 		}
+		long double sum = 0;
+		for(size_t i = 0; i < extra_calcs; i++){
+			sum = sin(sum + rand());
+		}
+		total_sum += sum;
 	}
 
 	Node *init(D &d, State &s0) {
@@ -207,6 +217,8 @@ private:
 		return n0;
 	}
 
+	size_t extra_calcs;
+	double total_sum;
 	OpenList<Node, Node, Cost> open;
  	// ClosedList<Node, Node, D> closed;
 	boost::unordered_flat_map<PackedState, Node *, StateHasher, StateEq> closed;
