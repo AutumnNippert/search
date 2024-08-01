@@ -25,9 +25,18 @@ struct HeapNode{
             reserved.store(false, std::memory_order_relaxed);  // something else should release
         }
 
-        inline bool reserve(){ // Worker thread only
+        inline int reserve(){ // Worker thread only
             bool expected = false;
-            return reserved.compare_exchange_strong(expected, true, std::memory_order_relaxed);
+            bool reserved_cp = reserved.load(std::memory_order_relaxed);
+            auto res = reserved.compare_exchange_strong(expected, true, std::memory_order_relaxed);
+            // return 0 if reserved, 1 if not reserved because it was already reserved by someone else, and 2 if reserved between the load and the compare_exchange
+            if (res){
+                return 0;
+            }
+            if (reserved_cp){
+                return 1;
+            }
+            return 2;
         }
 
         inline void set_completed(HeapNode<Node_t, Compare> * pre_array, std::size_t n){ // Worker thread only

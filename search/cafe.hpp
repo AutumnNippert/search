@@ -15,7 +15,7 @@
 
 #include <atomic>
 
-#define OPEN_LIST_SIZE 20000000
+#define OPEN_LIST_SIZE 100000000
 #define DEBUG true
 
 template <class D> struct CAFE : public SearchAlgorithm<D> {
@@ -90,7 +90,7 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 
 
 	CAFE(int argc, const char *argv[]):
-	 SearchAlgorithm<D>(argc, argv), open(OPEN_LIST_SIZE), open_queue(64) {
+	 SearchAlgorithm<D>(argc, argv), open(OPEN_LIST_SIZE), open_queue(2) {
 		num_threads = 1;
 		for (int i = 0; i < argc; i++) {
 			if (strcmp(argv[i], "-threads") == 0){
@@ -113,9 +113,14 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 		// delete nodes;
 	}
 
-	void thread_speculate(D &d, std::stop_token token, NodePool<Node, NodeComp>& nodes){
+	void thread_speculate(D &d, size_t id, std::stop_token token, NodePool<Node, NodeComp>& nodes){
 		// NodePool<Node, NodeComp> nodes(OPEN_LIST_SIZE);
 		while(!token.stop_requested()){
+			long double sum = 0;
+			for(size_t i = 0; i < 10; i++){
+				sum = sin(sum + rand());
+			}
+			total_sum += sum;
 			// auto start = std::chrono::high_resolution_clock::now();
 			// search open_queue
 			bool found = false;
@@ -124,27 +129,32 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 				if (token.stop_requested()){
 					return;
 				}
-				// try to reserve the node
+				
 				hn = open_queue[i];
 				if(hn == nullptr){
 					break; // if the node is null, leave the loop
 				}
-				if (hn->reserve()){
+				assert(hn != nullptr);
+				int res = hn->reserve();
+				if (res == 0){
 					found = true;
 					break;
 				}
+				else if(res == 2){
+					speculations_collided++;
+				}
+				failed_reserves++;
 			}
 			// if hn still bad, try to get from open
-			// if (!found){
-			// 	hn = open.fetch_work(num_threads*num_threads);
-			// 	if(hn == nullptr){
-			// 		thread_misses++;
-			// 		continue;
-			// 	}
-			// }
-			// auto end = std::chrono::high_resolution_clock::now();
-			// std::chrono::duration<double> elapsed_seconds = end - start;
-			// average_thread_fetch_time = (average_thread_fetch_time * total_nodes_speculated + elapsed_seconds.count()) / (total_nodes_speculated + 1);
+			if (!found){
+				thread_misses++;
+				continue; // skip trying to search the open list
+				hn = open.fetch_work(num_threads*num_threads);
+				if(hn == nullptr){
+					thread_misses++;
+					continue;
+				}
+			}
 
 			Node* n = &(hn->search_node);
 			State buf, &state = d.unpack(buf, n->state);
@@ -176,7 +186,7 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 
 		// Create threads after initial node is pushed
 		for (size_t i = 1; i < num_threads; i++){
-			threads.emplace_back(&CAFE::thread_speculate, this, std::ref(d), stop_source.get_token(), std::ref(node_pools[i]));
+			threads.emplace_back(&CAFE::thread_speculate, this, std::ref(d), i-1,  stop_source.get_token(), std::ref(node_pools[i]));
 		}
 
 		if (DEBUG){
@@ -204,7 +214,6 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 				if(DEBUG){
 					std::cerr << "\n";
 					std::cerr << "Total Nodes Observed: " << total_nodes_observed << std::endl;
-					std::cerr << "Total Speculated Nodes: " << total_nodes_speculated << std::endl;
 					std::cerr << "Open List Size: " << open.get_size() << std::endl;
 					std::cerr << std::endl;
 					std::cerr << "Speculated Nodes Expanded: " << speculated_nodes_expanded << std::endl;
@@ -216,7 +225,11 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 					std::cerr << std::endl;
 					std::cerr << "Average Thread Fetch Time: " << average_thread_fetch_time << " sec" << std::endl;
 					std::cerr << "CPU Time Spent Fetching: " << average_thread_fetch_time * total_nodes_speculated << " sec" << std::endl;
+					std::cerr << std::endl;
+					std::cerr << "Total Speculated Nodes: " << total_nodes_speculated << std::endl;
 					std::cerr << "Thread Misses: " << thread_misses << std::endl;
+					std::cerr << "Speculations Collided: " << speculations_collided << std::endl;
+					std::cerr << "Failed Reserves: " << failed_reserves << std::endl;
 					std::cerr << std::endl;
 					// std::cerr << "Expansion Rate: " << SearchAlgorithm<D>::res.expd / elapsed_seconds_algo.count() << "/sec" << std::endl;
 					// std::cerr << "Observe Rate: " << total_nodes_observed / elapsed_seconds_algo.count() << "/sec" << std::endl;
@@ -259,29 +272,31 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 			}
 			SearchAlgorithm<D>::res.expd++;
 			std::pair<HeapNode<Node, NodeComp> *, std::size_t> successor_ret;
-			// if(hn->is_completed()){
-			// 	// std::cerr << "Speculated Node Expanded" << std::endl;
-			// 	speculated_nodes_expanded++;
-			// 	successor_ret = hn->get_successors();
-			// }else{
-			// 	// std::cerr << "Manual Expansion" << std::endl;
-			// 	manual_expansions++;
-			// 	successor_ret = expand(d, hn, nodes, state);
-			// }
 
 			bool wasSpec = false;
 
-			if(hn->reserve()){
-				manual_expansions++;
-				successor_ret = expand(d, hn, nodes, state);
-			}else{
-				while(!hn->is_completed()){
-					std::this_thread::yield();
-				}
+			if(hn->is_completed()){
+				// std::cerr << "Speculated Node Expanded" << std::endl;
 				speculated_nodes_expanded++;
 				successor_ret = hn->get_successors();
 				wasSpec = true;
+			}else{
+				// std::cerr << "Manual Expansion" << std::endl;
+				manual_expansions++;
+				successor_ret = expand(d, hn, nodes, state);
 			}
+
+			// if(hn->reserve()){
+			// 	manual_expansions++;
+			// 	successor_ret = expand(d, hn, nodes, state);
+			// }else{
+			// 	while(!hn->is_completed()){
+			// 		std::this_thread::yield();
+			// 	}
+			// 	speculated_nodes_expanded++;
+			// 	successor_ret = hn->get_successors();
+			// 	wasSpec = true;
+			// }
 
 			HeapNode<Node, NodeComp>* successors = successor_ret.first;
 			size_t n_precomputed_successors = successor_ret.second;
@@ -319,6 +334,11 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 					node_delays[kid->nodes_expanded_at_time_of_expansion - kid->parent->nodes_expanded_at_time_of_expansion]++;
 				}
 			}
+			// long double sum = 0;
+			// for(size_t i = 0; i < 10; i++){
+			// 	sum = sin(sum + rand());
+			// }
+			// total_sum += sum;
 		}
 		this->finish();
 	}
@@ -342,6 +362,9 @@ private:
 	size_t num_threads;
 	std::atomic<size_t> total_nodes_observed = 0;
 	std::atomic<size_t> total_nodes_speculated = 0;
+
+	std::atomic<size_t> speculations_collided = 0;
+	std::atomic<size_t> failed_reserves = 0;
 
 	std::atomic<double> average_thread_fetch_time = 0; // including finding a node
 	std::atomic<size_t> thread_misses = 0;

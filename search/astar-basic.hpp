@@ -217,7 +217,7 @@ private:
 		return n0;
 	}
 
-	size_t extra_calcs;
+	size_t extra_calcs = 0;
 	double total_sum;
 	OpenList<Node, Node, Cost> open;
  	// ClosedList<Node, Node, D> closed;

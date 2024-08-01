@@ -25,7 +25,7 @@ plot_generator.py
 """
 
 
-def plot_xvar_over_yvar(data, xvar_name, yvar_name, plotname, xlog=False, ylog=False, x_var_override=None, y_var_override=None, title_override=None, output=None):
+def plot_xvar_over_yvar(data, xvar_name, yvar_name, plotname, xlog=False, ylog=False, x_var_override=None, y_var_override=None, title_override=None, output=None, yminmax=None):
     xvar = []
     yvar = []
     for key in data:
@@ -37,7 +37,7 @@ def plot_xvar_over_yvar(data, xvar_name, yvar_name, plotname, xlog=False, ylog=F
     print(df)   
     # plot the data
     # Apply a style for better aesthetics
-    plt.style.use('seaborn-v0_8-dark')
+    # plt.style.use('seaborn-pastel')
     plt.figure(figsize=(10, 6))
     plt.plot(df[xvar_name], df[yvar_name], marker='o', linestyle='-', color='b', label=yvar_name)
 
@@ -57,11 +57,11 @@ def plot_xvar_over_yvar(data, xvar_name, yvar_name, plotname, xlog=False, ylog=F
     if ylog:
         plt.yscale('log')
 
-    ax = plt.gca()
-    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, loc: "{:,}".format(int(x))))
-    plt.grid(True)
+    if yminmax:
+        plt.ylim(yminmax[0], yminmax[1])
+    # plt.grid(True)
     plt.legend()
-    plt.tight_layout()
+    # plt.tight_layout()
     if output:
         plt.savefig(output + '/' + plotname + '.png', dpi=300)
     else:
@@ -133,13 +133,13 @@ if __name__ == '__main__':
         if file and plot:
             data = get_json_from_file(file)
             plotname = file.split('.')[0]
-            plot_xvar_over_yvar(data, plot[0], plot[1], plotname, logx, logy, x_var_override, y_var_override, title_override, output)
+            plot_xvar_over_yvar(data, plot[0], plot[1], plotname, logx, logy, x_var_override, y_var_override, title_override, output, (0,36))
         elif folder and plot:
             files = os.listdir(folder)
             for file in files:
                 data = get_json_from_file(folder + '/' + file)
                 plotname = file.split('.')[0]
-                plot_xvar_over_yvar(data, plot[0], plot[1], plotname, logx, logy, x_var_override, y_var_override, title_override, output)
+                plot_xvar_over_yvar(data, plot[0], plot[1], plotname, logx, logy, x_var_override, y_var_override, title_override, output, (0,36))
         else:
             print('Please provide a file/folder and plot')
             sys.exit(1)
