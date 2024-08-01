@@ -116,11 +116,11 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 	void thread_speculate(D &d, size_t id, std::stop_token token, NodePool<Node, NodeComp>& nodes){
 		// NodePool<Node, NodeComp> nodes(OPEN_LIST_SIZE);
 		while(!token.stop_requested()){
-			long double sum = 0;
-			for(size_t i = 0; i < 10; i++){
-				sum = sin(sum + rand());
-			}
-			total_sum += sum;
+			// long double sum = 0;
+			// for(size_t i = 0; i < 10; i++){
+			// 	sum = sin(sum + rand());
+			// }
+			// total_sum += sum;
 			// auto start = std::chrono::high_resolution_clock::now();
 			// search open_queue
 			bool found = false;
