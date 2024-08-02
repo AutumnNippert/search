@@ -71,52 +71,49 @@ template <class D> struct SPAstar : public SearchAlgorithm<D> {
 
 	SPAstar(int argc, const char *argv[]) :
 		SearchAlgorithm<D>(argc, argv) {
-		nodes = new std::unique_ptr<std::atomic<std::shared_ptr<Pool<Node>>>>(new std::atomic<std::shared_ptr<Pool<Node>>>());
-		(*nodes)->store(std::make_shared<Pool<Node>>());
 		for (int i = 0; i < argc; i++) {
 			if (strcmp(argv[i], "-threads") == 0){
 				num_threads = strtod(argv[++i], NULL);
 				if(num_threads <= 0 ) {
 					exit(1);
 				}
+				if (strcmp(argv[i], "-exp") == 0){
+					extra_calcs = strtod(argv[++i], NULL);
+				}
 			}
 		}
 	}
 
 	~SPAstar() {
-		delete nodes;
 	}
 
-	void threadloop(std::atomic<bool> &found, D &d, size_t id, std::barrier<> &barrier) {
-		std::cerr << "Thread " << id << " started" << std::endl;
+	void threadloop(std::atomic<bool> &found, D &d, size_t id, std::barrier<> &barrier, Pool<Node> * nodes) {
+		// std::cerr << "Thread " << id << " started" << std::endl;
 		// wait for all threads to start
 		barrier.arrive_and_wait();
 		num_working_threads.fetch_add(1);
 		while (!(found.load()) && num_working_threads.load() >= 1) { // 1 thread because self
 			std::unique_lock<std::mutex> open_lock(open_mutex);
-			auto open_ptr = open.load();
-			Node *n = open_ptr->pop();
+			Node *n = open.pop();
 			open_lock.unlock();
 			// if failed to get a node, then continue
 			if (n == NULL) {
-				std::cerr << "Thread " << id << " failed to get a node" << std::endl;
+				// std::cerr << "Thread " << id << " failed to get a node" << std::endl;
 				continue;
 			}
 			State buf, &state = d.unpack(buf, n->state);
 			if (d.isgoal(state)) {
-				std::cerr << "Thread " << id << " found a solution" << std::endl;
+				// std::cerr << "Thread " << id << " found a solution" << std::endl;
 				found.store(true);
-				// solpath<D, Node>(d, n, this->res);
-				// set goal to the best solution
 				auto goal_ptr = goal.load();
 				if (goal_ptr == nullptr || n->g < goal_ptr->g) {
 					goal.store(std::make_shared<Node>(*n));
 				}
 				break;
 			}
-			expand(d, n, state);
+			expand(d, n, state, nodes);
 		}
-		std::cerr << "Thread " << id << " finished" << std::endl;
+		// std::cerr << "Thread " << id << " finished" << std::endl;
 		num_working_threads.fetch_sub(1);
 	}
 
@@ -124,31 +121,28 @@ template <class D> struct SPAstar : public SearchAlgorithm<D> {
 		this->start();
 		//closed.init(d);
 
-		// initialize atomic open and closed lists
-		open.store(std::make_shared<OpenList<Node, Node, Cost>>());
-		closed.store(std::make_shared<boost::unordered_flat_map<PackedState, Node *, StateHasher, StateEq>>());
-
 		auto found = std::atomic<bool>(false);
 		// init barrier to size of threads
-		std::barrier<> barrier(num_threads); //yeah idk
+		std::barrier<> barrier(num_threads);
+
+		std::vector<Pool<Node>* > pools;
 		
 		for (size_t i = 0; i < num_threads; i++){
-			threads.emplace_back(&SPAstar::threadloop, this, std::ref(found), std::ref(d), i, std::ref(barrier));
+			pools.push_back(new Pool<Node>());
+			threads.emplace_back(&SPAstar::threadloop, this, std::ref(found), std::ref(d), i, std::ref(barrier), pools[i]);
 		}
 
-		auto open_ptr = open.load();
-		auto closed_ptr = closed.load();
-
-		Node * n0 = init(d, s0);
-		closed_ptr->emplace(n0->state, n0);
-		open_ptr->push(n0);
+		Pool<Node> * nodes = new Pool<Node>();
+		Node * n0 = init(d, s0, nodes);
+		closed.emplace(n0->state, n0);
+		open.push(n0);
 
 		// wait till all threads are done
 		for (auto &thread : threads) {
 			thread.join();
 		}
 
-		std::cerr << "All threads are done" << std::endl;
+		// std::cerr << "All threads are done" << std::endl;
 
 		auto goal_ptr = goal.load();
 		if (goal_ptr != nullptr) {
@@ -158,27 +152,21 @@ template <class D> struct SPAstar : public SearchAlgorithm<D> {
 	}
 
 	virtual void reset() {
-		auto open_ptr = open.load();
-		auto closed_ptr = closed.load();
-		auto nodes_ptr = (*nodes)->load();
 		SearchAlgorithm<D>::reset();
-		open_ptr->clear();
-		closed_ptr->clear();
-		// delete nodes_ptr;
-		// nodes_ptr = new std::atomic<std::shared_ptr<Pool<Node>>>(); // cursed line
+		open.clear();
+		closed.clear();
 	}
 
 	virtual void output(FILE *out) {
-		auto open_ptr = open.load();
 		SearchAlgorithm<D>::output(out);
 		//closed.prstats(stdout, "closed ");
-		dfpair(stdout, "open list type", "%s", open_ptr->kind());
+		dfpair(stdout, "open list type", "%s", open.kind());
 		dfpair(stdout, "node size", "%u", sizeof(Node));
 	}
 
 private:
 
-	void expand(D &d, Node *n, State &state) {
+	void expand(D &d, Node *n, State &state, Pool<Node> * nodes) {
 		SearchAlgorithm<D>::res.expd++;
 
 		typename D::Operators ops(d, state);
@@ -186,11 +174,7 @@ private:
 			if (ops[i] == n->pop)
 				continue;
 			SearchAlgorithm<D>::res.gend++;
-
-			std::unique_lock<std::mutex> nodes_lock(nodes_mutex);
-			auto nodes_ptr = (*nodes)->load();
-			Node *kid = nodes_ptr->construct();
-			nodes_lock.unlock();
+			Node *kid = nodes->construct();
 
 			assert (kid);
                         Oper op = ops[i];
@@ -202,35 +186,29 @@ private:
 			//lock open and closed
 			std::lock_guard<std::mutex> open_lock(open_mutex);
 			std::lock_guard<std::mutex> closed_lock(closed_mutex);
-			auto open_ptr = open.load();
-			auto closed_ptr = closed.load();
-			auto dupl = closed_ptr->find(kid->state);
-			if (dupl != closed_ptr->end()) {
+			auto dupl = closed.find(kid->state);
+			if (dupl != closed.end()) {
 				Node * dup = dupl->second;
 				this->res.dups++;
 				if (kid->g >= dup->g) {
-					std::unique_lock<std::mutex> nodes_lock(nodes_mutex);
-					nodes_ptr->destruct(kid);
-					nodes_lock.unlock();
+					nodes->destruct(kid);
 					continue;
 				}
-				bool isopen = open_ptr->mem(dup);
+				bool isopen = open.mem(dup);
 				if (isopen)
-					open_ptr->pre_update(dup);
+					open.pre_update(dup);
 				dup->f = dup->f - dup->g + kid->g;
 				dup->g = kid->g;
 				dup->parent = n;
 				dup->op = op;
 				dup->pop = e.revop;
 				if (isopen) {
-					open_ptr->post_update(dup);
+					open.post_update(dup);
 				} else {
 					this->res.reopnd++;
-					open_ptr->push(dup);
+					open.push(dup);
 				}
-				std::unique_lock<std::mutex> nodes_lock(nodes_mutex);
-				nodes_ptr->destruct(kid);
-				nodes_lock.unlock();
+				nodes->destruct(kid);
 				continue;
 			}
 
@@ -239,18 +217,15 @@ private:
 			kid->op = op;
 			kid->pop = e.revop;
 
-			// load them again
-			closed_ptr = closed.load();
-			closed_ptr->emplace(kid->state, kid);
+			// should be covered by lock guards above
+			closed.emplace(kid->state, kid);
+			open.push(kid);
 
-			open_ptr = open.load();
-			open_ptr->push(kid);
 		}
 	}
 
-	Node *init(D &d, State &s0) {
-		auto nodes_ptr = (*nodes)->load();
-		Node * n0 = nodes_ptr->construct();
+	Node *init(D &d, State &s0, Pool<Node> * nodes) {
+		Node * n0 = nodes->construct();
 		d.pack(n0->state, s0);
 		n0->g = Cost(0);
 		n0->f = d.h(s0);
@@ -264,13 +239,16 @@ private:
 	std::vector<std::jthread> threads;
 	std::atomic<std::shared_ptr<Node>> goal;
 
+
+	size_t extra_calcs = 0;
+	std::atomic<double> total_sum = 0;
+
 	// mutexes
 	std::mutex open_mutex;
 	std::mutex closed_mutex;
 	std::mutex nodes_mutex;
 
-	std::atomic<std::shared_ptr<OpenList<Node, Node, Cost>>> open;
+	OpenList<Node, Node, Cost> open;
  	// ClosedList<Node, Node, D> closed;
-	std::atomic<std::shared_ptr<boost::unordered_flat_map<PackedState, Node *, StateHasher, StateEq>>> closed;
-	std::unique_ptr<std::atomic<std::shared_ptr<Pool<Node>>>> *nodes;
+	boost::unordered_flat_map<PackedState, Node *, StateHasher, StateEq> closed;
 };
