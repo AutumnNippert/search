@@ -75,13 +75,13 @@ template <class D> struct KBFS : public SearchAlgorithm<D> {
 					exit(1);
 				}
 			}
+			if (strcmp(argv[i], "-exp") == 0){
+				extra_calcs = strtod(argv[++i], NULL);
+			}
 		}
-		// nodes = new Pool<Node>();
 	}
 
-	~KBFS() {
-		// delete nodes;
-	}
+	~KBFS() {}
 
 	void worker(D &d, size_t i, std::stop_token token, Pool<Node> * nodes){
 		while(!token.stop_requested()){
@@ -248,6 +248,13 @@ private:
 			kid->pop = e.revop;
 			children.push_back(kid);
 		}
+
+		long double sum = 0;
+		for(size_t i = 0; i < extra_calcs; i++){
+			sum = sin(sum + rand());
+		}
+		total_sum += sum;
+
 		return children;
 	}
 
@@ -270,13 +277,18 @@ private:
 		thread_state = std::vector<ThreadState>(num_threads, ThreadState::expanded);
 	}
 
+	size_t extra_calcs = 0;
+	std::atomic<double> total_sum = 0;
+
 	OpenList<Node, Node, Cost> open;
 	boost::unordered_flat_map<PackedState, Node*, StateHasher, StateEq> closed;
+	
 	std::size_t num_threads;
-	std::vector<std::condition_variable> worker_start;
-	std::vector<std::condition_variable> worker_done;
-	std::vector<std::mutex> locks;
 	std::vector<Node *> node_to_expand;
 	std::vector<std::vector<Node *>> children;
 	std::vector<ThreadState> thread_state;
+
+	std::vector<std::condition_variable> worker_start;
+	std::vector<std::condition_variable> worker_done;
+	std::vector<std::mutex> locks;
 };
