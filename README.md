@@ -16,7 +16,14 @@ Clang versions less than 3.0 do not seem to work.
 * extra/boost
 * extra/sdl2
 * extra/sdl_image
+* extra/sdl2_image
 * extra/lapack 
+
+## Fedora dependencies:
+* boost-devel
+* lapack-devel
+* SDL2-devel (untested)
+* SDL2_image-devel (untested)
 
 # Running Instructions
 Make sure the algorithm you are trying to run is in `./search/search/main.hpp` as well as in the `makefile`
@@ -24,4 +31,13 @@ Also make sure that the domain you are trying to run the algorithm on has a prob
 ```
 ~/search$ make
 ~/search$ ./<path to executable file> <algorithm alias in main.hpp> < <path to problem file>
+```
+
+## Runnning algocomp
+```sh
+python3 python/algocomp.py <path to executable> <path to folder to test in> [algo1 -args:algo2 -args...]
+```
+Example
+```sh
+python3 python/algocomp.py ./tiles/15md_solver ./korf100/ astar-basic:cafe -threads 2:kbfs -threads 4
 ```

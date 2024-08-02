@@ -3,10 +3,12 @@
 
 #include <vector>
 #include <boost/optional.hpp>
+#include <iostream>
 
 void fatal(const char*, ...);
 
-template <class Ops, class Elm> class BinHeap {
+template <class Ops, class Elm> 
+class BinHeap {
 public:
 
 	// push pushes a new element into the heap in
@@ -141,15 +143,36 @@ public:
 		return i;
 	}
 
+	
+	inline friend void dump_bheap(std::ostream& stream, const BinHeap& heap, std::size_t i, int depth){
+		if (i >= heap.size()){
+			return;
+		}
+		for(int j = 0; j < depth; j++){
+			stream << " ";
+		}
+		stream << *heap.heap[i] << "\n";
+		dump_bheap(stream, heap, heap.left(i), depth + 1);
+		dump_bheap(stream, heap, heap.right(i), depth + 1);
+	}
+
+	inline friend std::ostream& operator<<(std::ostream& stream, const BinHeap& heap){
+		// for (unsigned int i = 0; i < heap.size(); i++){
+		// 	stream << *heap.heap[i] << " ";
+		// }
+		dump_bheap(stream, heap, 0, 0);
+		return stream;
+	}
+
 private:
 	friend bool binheap_push_test();
 	friend bool binheap_pop_test();
 
-	long parent(long i) { return (i - 1) / 2; }
+	long parent(long i) const { return (i - 1) / 2; }
 
-	long left(long i) { return 2 * i + 1; }
+	long left(long i) const { return 2 * i + 1; }
 
-	long right(long i) { return 2 * i + 2; }
+	long right(long i) const { return 2 * i + 2; }
 
 	long pullup(long i) {
 		if (i == 0)

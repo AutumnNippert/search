@@ -1,0 +1,4 @@
+Plots
+Profiling
+Give each thread a section of open to check so no collisions (some mod operations in fetchWork, and giving thread IDs)
+    Segment into 64 nodes per thread

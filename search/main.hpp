@@ -25,7 +25,7 @@
 #include "aees.hpp"
 #include "ucs.hpp"
 #include "naive-cafe.hpp"
-// #include "cafe.hpp"
+#include "cafe.hpp"
 #include "astar-basic.hpp"
 #include "kbfs.hpp"
 #include "spastar.hpp"
@@ -75,10 +75,11 @@ template<class D> Result<D> searchGet(SearchAlgorithm<D>*(*get)(int, const char 
 		dfpair(stdout, "final sol cost", "%f", -1.0);
 	}
 	srch->output(stdout);
-
+	std::cerr << "printed\n";
 	Result<D> res = srch->res;
+	std::cerr << "deleting\n";
 	delete srch;
-
+	std::cerr << "deleted\n";
 	return res;
 }
 
@@ -144,8 +145,8 @@ template<class D> SearchAlgorithm<D> *getsearch(int argc, const char *argv[]) {
 		return new UniformCost<D>(argc, argv);
 	else if (strcmp(argv[1], "naive-cafe") == 0)
 		return new Naive_CAFE<D>(argc, argv);
-	// else if (strcmp(argv[1], "cafe") == 0)
-	// 	return new CAFE<D>(argc, argv);
+	else if (strcmp(argv[1], "cafe") == 0)
+		return new CAFE<D>(argc, argv);
 	else if (strcmp(argv[1], "kbfs") == 0)
 		return new KBFS<D>(argc, argv);
 	else if (strcmp(argv[1], "spastar") == 0)

@@ -24,7 +24,8 @@ template <class D> struct AstarBasic : public SearchAlgorithm<D> {
 			return const_cast<PackedState&>(s).hash(nullptr);
 		}
 	};
-	
+
+
 	struct Node {
 		ClosedEntry<Node, D> closedent;
 		int openind;
@@ -65,11 +66,29 @@ template <class D> struct AstarBasic : public SearchAlgorithm<D> {
 		static Cost tieprio(Node *n) {
 			return n->g;
 		}
+
+		inline friend std::ostream& operator<<(std::ostream& stream, const Node& node){
+			stream << "[g:" << node.g << ", f:" << node.f << ", op:" << node.op << ", pop:" << node.pop << "]";
+			return stream;
+		}
 	};
+
+	static inline void dump_closed(std::ostream& stream, const boost::unordered_flat_map<PackedState, Node *, StateHasher, StateEq>& c){
+		stream << "Closed:\n";
+		for (const auto & elem: c){
+			stream << *((std::size_t *)(&elem.first)) << ": " << *elem.second << "\n";
+		}
+		stream << "\n";
+	}
 
 	AstarBasic(int argc, const char *argv[]) :
 		SearchAlgorithm<D>(argc, argv) {
 		nodes = new Pool<Node>();
+		for (int i = 0; i < argc; i++) {
+			if (strcmp(argv[i], "-exp") == 0){
+				extra_calcs = strtod(argv[++i], NULL);
+			}
+		}
 	}
 
 	~AstarBasic() {
@@ -85,8 +104,14 @@ template <class D> struct AstarBasic : public SearchAlgorithm<D> {
 		open.push(n0);
 
 		while (!open.empty() && !SearchAlgorithm<D>::limit()) {
+			// std::cout << "Open Pull" << std::endl;
 			Node *n = open.pop();
+			// std::cerr << "pop:"<<*n << "\n";
+			// dump_closed(std::cerr, closed);
+			// std::cerr << open << std::endl;
 			State buf, &state = d.unpack(buf, n->state);
+			
+			// std::cout << "Popped Node: " << *n << std::endl;
 
 			if (d.isgoal(state)) {
 				solpath<D, Node>(d, n, this->res);
@@ -126,11 +151,16 @@ private:
 
 			Node *kid = nodes->construct(); // nodes->construct() is a function that returns a new node from the pool?
 			assert (kid);
-                        Oper op = ops[i];
+            Oper op = ops[i];
+
 			typename D::Edge e(d, state, op);
 			kid->g = n->g + e.cost;
 			d.pack(kid->state, e.state);
-
+			// comment out below along with debug
+			kid->f = kid->g + d.h(e.state);
+			kid->parent = n;
+			kid->op = op;
+			kid->pop = e.revop;
 			// unsigned long hash = kid->state.hash(&d);
 			auto dupl = closed.find(kid->state);
 			if (dupl != closed.end()) {
@@ -140,6 +170,7 @@ private:
 					nodes->destruct(kid);
 					continue;
 				}
+				// std::cerr << "duplicate:" << *kid << " " << *dup << " same state? "<< StateEq()(kid->state, dup->state) << "\n";
 				bool isopen = open.mem(dup);
 				if (isopen)
 					open.pre_update(dup);
@@ -150,6 +181,7 @@ private:
 				dup->pop = e.revop;
 				if (isopen) {
 					open.post_update(dup);
+					// std::cerr << open << std::endl;
 				} else {
 					this->res.reopnd++;
 					open.push(dup);
@@ -162,9 +194,17 @@ private:
 			kid->parent = n;
 			kid->op = op;
 			kid->pop = e.revop;
+			// std::cout << "Adding successor " << std::endl;// *kid << std::endl;
 			closed.emplace(kid->state, kid);
 			open.push(kid);
+			// std::cerr << "push:" << *kid << "\n";
+			// std::cerr << open << "\n";
 		}
+		long double sum = 0;
+		for(size_t i = 0; i < extra_calcs; i++){
+			sum = sin(sum + rand());
+		}
+		total_sum += sum;
 	}
 
 	Node *init(D &d, State &s0) {
@@ -177,6 +217,8 @@ private:
 		return n0;
 	}
 
+	size_t extra_calcs = 0;
+	double total_sum;
 	OpenList<Node, Node, Cost> open;
  	// ClosedList<Node, Node, D> closed;
 	boost::unordered_flat_map<PackedState, Node *, StateHasher, StateEq> closed;

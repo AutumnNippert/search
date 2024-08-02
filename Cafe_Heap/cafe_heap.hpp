@@ -25,14 +25,28 @@ struct HeapNode{
             reserved.store(false, std::memory_order_relaxed);  // something else should release
         }
 
-        inline bool reserve(){ // Worker thread only
+        inline int reserve(){ // Worker thread only
             bool expected = false;
-            return reserved.compare_exchange_strong(expected, true, std::memory_order_acq_rel, std::memory_order_acquire);
+            bool reserved_cp = reserved.load(std::memory_order_relaxed);
+            auto res = reserved.compare_exchange_strong(expected, true, std::memory_order_relaxed);
+            // return 0 if reserved, 1 if not reserved because it was already reserved by someone else, and 2 if reserved between the load and the compare_exchange
+            if (res){
+                return 0;
+            }
+            if (reserved_cp){
+                return 1;
+            }
+            return 2;
         }
 
-        inline void set_completed(Node_t * pre_array, std::size_t n){ // Worker thread only
+        inline void set_completed(HeapNode<Node_t, Compare> * pre_array, std::size_t n){ // Worker thread only
             n_precomputed_successors = n;
             precomputed_successors.store(pre_array, std::memory_order_release);
+        }
+
+         inline void set_completed(void * pre_array, std::size_t n){ // dummy, do not use
+            n_precomputed_successors = n;
+            precomputed_successors.store((HeapNode<Node_t, Compare> *)pre_array, std::memory_order_release);
         }
 
         inline bool is_completed() const{ // For main thread only
@@ -62,18 +76,25 @@ class NodePool{ // NOT THREAD SAFE ONE PER THREAD
         std::size_t _size;
     public:
         NodePool(std::size_t capacity):_capacity(capacity),_size(0){
-            _nodes = new HeapNode<Node_t, Compare>[capacity];
+            _nodes = reinterpret_cast<HeapNode<Node_t, Compare> *>(std::malloc(capacity * sizeof(HeapNode<Node_t, Compare>)));
+            if(_nodes == nullptr){
+                std::cerr << "Error bad malloc\n";
+                exit(-1);
+            }
         }
 
         ~NodePool(){
-            delete[] _nodes;
+            free(_nodes);
         }
 
         HeapNode<Node_t, Compare> * reserve(std::size_t n){
+            assert(_size + n <= _capacity);
             HeapNode<Node_t, Compare> * retval = _nodes + _size;
             _size += n;
             return retval;
         } 
+
+        /* TODO: Create Destruct Function */
 };
 
 constexpr handle_t parent(handle_t i){
@@ -120,11 +141,11 @@ class CafeMinBinaryHeap{
             }
             HeapNode<Node_t, Compare> * xi = _data[i].load(std::memory_order_relaxed);
             HeapNode<Node_t, Compare> * xj = _data[j].load(std::memory_order_relaxed);
-            if(Compare()(xj->search_node, xi->search_node)){
-                return;
+            if(Compare()(xi->search_node, xj->search_node)){
+                swap_helper(i, j, xi, xj);
+                pull_up(j);
             }
-            swap_helper(i, j, xi, xj);
-            pull_up(j);
+            
         }
 
         inline void push_down(handle_t i, const std::size_t s){
@@ -139,12 +160,12 @@ class CafeMinBinaryHeap{
                     smallest = xl;
                     smallest_i = l;
                 }
-                if(r < s){
-                    HeapNode<Node_t, Compare> * xr = _data[r].load(std::memory_order_relaxed);
-                    if(Compare()(xr->search_node, smallest->search_node)){
-                        smallest = xr;
-                        smallest_i = r;
-                    }
+            }
+            if(r < s){
+                HeapNode<Node_t, Compare> * xr = _data[r].load(std::memory_order_relaxed);
+                if(Compare()(xr->search_node, smallest->search_node)){
+                    smallest = xr;
+                    smallest_i = r;
                 }
             }
             if(smallest_i != i){
@@ -156,12 +177,16 @@ class CafeMinBinaryHeap{
     public:       
         inline CafeMinBinaryHeap(std::size_t capacity):_capacity(capacity){
             // setup heap before workers!
-            _data = new std::atomic<HeapNode<Node_t, Compare> *>[capacity];
+            _data = reinterpret_cast<std::atomic<HeapNode<Node_t, Compare> *> *>(std::malloc(capacity * sizeof(std::atomic<HeapNode<Node_t, Compare> *>)));
+            if(_data == nullptr){
+                std::cerr << "Error bad malloc\n";
+                exit(-1);
+            }
             size.store(0, std::memory_order_release);
         }
 
         inline ~CafeMinBinaryHeap(){
-            delete[] _data;
+            free(_data);
         }
 
         inline HeapNode<Node_t, Compare> * get(handle_t i) const{
@@ -184,12 +209,15 @@ class CafeMinBinaryHeap{
             std::size_t s = size.load(std::memory_order_relaxed);
             node->handle = s;
             node->zero();
-            _data[s].store(node, std::memory_order_relaxed);
+            _data[s].store(node, std::memory_order_release);
             pull_up(s);
             size.store(++s, std::memory_order_release); 
         }
 
-        inline void decrease_key(handle_t i){
+        inline void decrease_key(handle_t i, HeapNode<Node_t, Compare> * node){
+            node->handle = i;
+            node->zero();
+            _data[i].store(node, std::memory_order_release);
             pull_up(i);
         }
 
@@ -197,14 +225,22 @@ class CafeMinBinaryHeap{
             return size.load(std::memory_order_relaxed) == 0;
         }
 
-        inline HeapNode<Node_t, Compare> * fetch_work() const{  // for worker
+        inline HeapNode<Node_t, Compare> * fetch_work(size_t start_depth) const{  // for worker
             std::size_t s = size.load(std::memory_order_acquire);
-            for(std::size_t i = 0; i < s; i++){
-                HeapNode<Node_t, Compare> * n = _data[i].load(std::memory_order_relaxed);
-                if(n->flags.reserve()){
-                    return n;
+            std::size_t depth = start_depth;  // start at the depth, and go up
+            // while(depth < s){
+                for (std::size_t i = 0; i < s; i++){
+                    // if (i >= s){ // it was segfaulting, This shouldn't be necessary but i guess the open list must change size during the search
+                    //     return nullptr;
+                    // }
+                    HeapNode<Node_t, Compare> * n = _data[i].load(std::memory_order_acquire);
+                    if(n->reserve()){
+                        return n;
+                    }
                 }
-            }
+                // s = size.load(std::memory_order_acquire);
+                // depth*=2;
+            // }
             return nullptr;
         }
 
@@ -241,12 +277,28 @@ class CafeMinBinaryHeap{
             return true;
         }
 
-        inline friend std::ostream& operator<<(std::ostream& stream, const CafeMinBinaryHeap<Node_t, Compare>& heap){
-            std::size_t s = heap.size.load();
-            for (std::size_t i = 0; i < s; i++){
-                stream << *heap._data[i] << " ";
+        inline friend void dump(std::ostream& stream, const CafeMinBinaryHeap<Node_t, Compare>& heap, std::size_t i, int depth){
+            if (i >= heap.size){
+                return;
             }
-            stream << "\n";
+            for(int j = 0; j < depth; j++){
+                stream << " ";
+            }
+            stream << heap._data[i].load()->search_node << "\n";
+            dump(stream, heap, left_child(i), depth + 1);
+            dump(stream, heap, right_child(i), depth + 1);
+        }
+
+        inline size_t get_size() const{
+            return size.load();
+        }
+
+        inline friend std::ostream& operator<<(std::ostream& stream, const CafeMinBinaryHeap<Node_t, Compare>& heap){
+            dump(stream, heap, 0, 0);
+            // std::size_t s = heap.size.load();
+            // for (std::size_t i = 0; i < s; i++){
+            //     stream << *heap._data[i] << " ";
+            // }
             return stream;
         }
 };

@@ -139,6 +139,11 @@ public:
 		heap.clear();
 	}
 
+	inline friend std::ostream& operator<<(std::ostream& stream, const OpenList& open_list){
+		stream << open_list.heap;
+		return stream;
+	}
+
 private:
 	struct Heapops {
  		static bool pred(Node *a, Node *b) { return Ops::pred(a, b); }
