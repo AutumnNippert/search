@@ -177,6 +177,7 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 			State buf, &state = d.unpack(buf, n->state);
 
 			auto successor_ret = expand(d, hn, nodes, state);
+			waste_time(extra_calcs);
 			hn->set_completed(successor_ret.first, successor_ret.second);
 			total_nodes_speculated++;
 		}
@@ -186,6 +187,8 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 		this->start();
 		// get time
 		auto start = std::chrono::high_resolution_clock::now();
+		std::size_t s_i = 0;
+        volatile std::size_t * sum_i = &s_i;
 
 		size_t speculated_nodes_expanded = 0;
 		size_t manual_expansions = 0;
@@ -300,6 +303,7 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 				// std::cerr << "Manual Expansion" << std::endl;
 				manual_expansions++;
 				successor_ret = expand(d, hn, nodes, state);
+				waste_time(extra_calcs);
 			}
 
 			// if(hn->reserve()){
@@ -431,11 +435,11 @@ private:
 			total_nodes_observed++; // generated
 		}
 		
-		long double sum = 0;
-		for(size_t i = 0; i < extra_calcs; i++){
-			sum = sin(sum + rand());
-		}
-		total_sum += sum;
+		// long double sum = 0;
+		// for(size_t i = 0; i < extra_calcs; i++){
+		// 	sum = sin(sum + rand());
+		// }
+		// total_sum += sum;
 
 		// auto end = std::chrono::high_resolution_clock::now();
 		// std::chrono::duration<double> elapsed_seconds = end - start;

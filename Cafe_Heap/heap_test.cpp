@@ -28,17 +28,7 @@ struct NodeComp{
     }
 };
 
-std::size_t waste_time(std::size_t n){
-    std::size_t i = 0;
-    for(std::size_t j = 0; j < n; j++){
-        i += j;
-    }
-    return i;
-}
-
 void thread_speculate(std::stop_token token, CafeMinBinaryHeap<Node, NodeComp>& open, WorkerMetadata & mdat, std::size_t slowdown){
-		std::size_t s_i = 0;
-        volatile std::size_t * sum_i = &s_i;
         // std::size_t sexp = 0;
         while(!token.stop_requested()){
 			// auto start = std::chrono::high_resolution_clock::now();
@@ -46,7 +36,7 @@ void thread_speculate(std::stop_token token, CafeMinBinaryHeap<Node, NodeComp>& 
 			if(hn == nullptr){
 				continue;
 			}
-			*sum_i += waste_time(slowdown);
+			waste_time(slowdown);
 			hn->set_completed((Node *)1, 0);
             // sexp++;
 		}
