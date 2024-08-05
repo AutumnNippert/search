@@ -10,7 +10,7 @@
 #include <boost/heap/d_ary_heap.hpp>
 #include <thread>
 #include <stop_token>
-
+ 
 struct Node{
     int g;
     Node() = default;
