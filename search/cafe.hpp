@@ -18,6 +18,14 @@
 #define OPEN_LIST_SIZE 100000000
 #define DEBUG true
 
+inline void waste_time(std::size_t n){
+    std::size_t s_i = 0;
+    volatile std::size_t * sum_i = &s_i;
+    for(std::size_t j = 0; j < n; j++){
+        *sum_i += j;
+    }
+}
+
 template <class D> struct CAFE : public SearchAlgorithm<D> {
 
 	typedef typename D::State State;
@@ -90,7 +98,7 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 
 
 	CAFE(int argc, const char *argv[]):
-	 SearchAlgorithm<D>(argc, argv), open(OPEN_LIST_SIZE), open_queue(2) {
+	 SearchAlgorithm<D>(argc, argv), open(OPEN_LIST_SIZE) {
 		num_threads = 1;
 		for (int i = 0; i < argc; i++) {
 			if (strcmp(argv[i], "-threads") == 0){
@@ -125,30 +133,30 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 			// search open_queue
 			bool found = false;
 			HeapNode<Node, NodeComp> *hn = nullptr;
-			for (size_t i = 0; i < open_queue.size(); i++){
-				if (token.stop_requested()){
-					return;
-				}
+			// for (size_t i = 0; i < open_queue.size(); i++){
+			// 	if (token.stop_requested()){
+			// 		return;
+			// 	}
 				
-				hn = open_queue[i];
-				if(hn == nullptr){
-					break; // if the node is null, leave the loop
-				}
-				assert(hn != nullptr);
-				int res = hn->reserve();
-				if (res == 0){
-					found = true;
-					break;
-				}
-				else if(res == 2){
-					speculations_collided++;
-				}
-				failed_reserves++;
-			}
+			// 	hn = open_queue[i];
+			// 	if(hn == nullptr){
+			// 		break; // if the node is null, leave the loop
+			// 	}
+			// 	assert(hn != nullptr);
+			// 	int res = hn->reserve();
+			// 	if (res == 0){
+			// 		found = true;
+			// 		break;
+			// 	}
+			// 	else if(res == 2){
+			// 		speculations_collided++;
+			// 	}
+			// 	failed_reserves++;
+			// }
 			// if hn still bad, try to get from open
 			if (!found){
-				thread_misses++;
-				continue; // skip trying to search the open list
+				// thread_misses++;
+				// continue; // skip trying to search the open list
 				hn = open.fetch_work(num_threads*num_threads);
 				if(hn == nullptr){
 					thread_misses++;
@@ -160,6 +168,7 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 			State buf, &state = d.unpack(buf, n->state);
 
 			auto successor_ret = expand(d, hn, nodes, state);
+			waste_time(extra_calcs);
 			hn->set_completed(successor_ret.first, successor_ret.second);
 			total_nodes_speculated++;
 		}
@@ -182,7 +191,6 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 		HeapNode<Node, NodeComp> * hn0 = init(d, nodes, s0);
 		closed.emplace(hn0->search_node.state, hn0);
 		open.push(hn0);
-		open_queue.push_back(hn0);
 
 		// Create threads after initial node is pushed
 		for (size_t i = 1; i < num_threads; i++){
@@ -284,6 +292,7 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 				// std::cerr << "Manual Expansion" << std::endl;
 				manual_expansions++;
 				successor_ret = expand(d, hn, nodes, state);
+				waste_time(extra_calcs);
 			}
 
 			// if(hn->reserve()){
@@ -322,7 +331,7 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 				else{
 					open.push(successor); // add to open list
 					closed[kid->state] = successor; // add to closed list
-					open_queue.push_back(successor);
+					// open_queue.push_back(successor);
 				}
 
 				if (wasSpec){
@@ -413,11 +422,11 @@ private:
 			total_nodes_observed++; // generated
 		}
 		
-		long double sum = 0;
-		for(size_t i = 0; i < extra_calcs; i++){
-			sum = sin(sum + rand());
-		}
-		total_sum += sum;
+		// long double sum = 0;
+		// for(size_t i = 0; i < extra_calcs; i++){
+		// 	sum = sin(sum + rand());
+		// }
+		// total_sum += sum;
 
 		// auto end = std::chrono::high_resolution_clock::now();
 		// std::chrono::duration<double> elapsed_seconds = end - start;
@@ -438,6 +447,6 @@ private:
 	}
 
 	CafeMinBinaryHeap<Node, NodeComp> open;
-	boost::circular_buffer<HeapNode<Node, NodeComp>*> open_queue;
+	// boost::circular_buffer<HeapNode<Node, NodeComp>*> open_queue;
 	boost::unordered_flat_map<PackedState, HeapNode<Node, NodeComp> *, StateHasher, StateEq> closed;
 };
