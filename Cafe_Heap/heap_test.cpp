@@ -36,18 +36,21 @@ std::size_t waste_time(std::size_t n){
     return i;
 }
 
-void thread_speculate(std::stop_token token, CafeMinBinaryHeap<Node, NodeComp>& open, std::size_t slowdown){
+void thread_speculate(std::stop_token token, CafeMinBinaryHeap<Node, NodeComp>& open, WorkerMetadata & mdat, std::size_t slowdown){
 		std::size_t s_i = 0;
         volatile std::size_t * sum_i = &s_i;
+        // std::size_t sexp = 0;
         while(!token.stop_requested()){
 			// auto start = std::chrono::high_resolution_clock::now();
-			HeapNode<Node, NodeComp> *hn = fetch_work(open);
+			HeapNode<Node, NodeComp> *hn = fetch_work(open, mdat);
 			if(hn == nullptr){
 				continue;
 			}
 			*sum_i += waste_time(slowdown);
 			hn->set_completed((Node *)1, 0);
+            // sexp++;
 		}
+        // std::cerr << "Speculative Expansions: " << sexp << "\n";
 	}
 
 using Queue = boost::heap::d_ary_heap<Node, boost::heap::arity<2>, boost::heap::mutable_<true>, boost::heap::compare<NodeComp>>;
@@ -63,20 +66,27 @@ int main(int argc, char* argv[]){
     int workers = std::stof(argv[2]);
     std::vector<std::jthread> threads;
     std::stop_source stop_source;
+    std::vector<WorkerMetadata> wmdat;
+    wmdat.resize(workers-1);
 
-    std::size_t test_n_pop = 10000;
+    std::size_t test_n_pop = 1000000;
+    std::size_t normal_expansions = 0;
+    std::size_t spec_exp_used = 0;
     unsigned int ratio_push_to_pop = 5;
     std::srand(std::time(0)); // use current time as seed for random generator
     std::size_t total_pushes = ratio_push_to_pop * test_n_pop;
     std::vector<int> g_values;
     g_values.reserve(total_pushes);
     for (std::size_t i = 0; i < total_pushes; i++){
-        g_values.push_back(rand());
+        g_values.push_back((rand() % (total_pushes/10)) + 10*i);
+        //g_values.push_back(i);
     }
 
     CafeMinBinaryHeap<Node, NodeComp> heap(total_pushes, workers);
     for (int i = 1; i < workers; i++){
-        threads.emplace_back(&thread_speculate, stop_source.get_token(), std::ref(heap), slowdown);
+        wmdat[i-1].heap_top_fetch.resize(workers);
+        wmdat[i-1].recent_push_fetch.resize(workers);
+        threads.emplace_back(&thread_speculate, stop_source.get_token(), std::ref(heap), std::ref(wmdat[i-1]), slowdown);
     }
     NodePool<Node, NodeComp> node_pool(total_pushes);
     long sum = 0;
@@ -101,11 +111,27 @@ int main(int argc, char* argv[]){
         heap.pop();
         if(!n.is_completed()){
             *sum_i += waste_time(slowdown);
+            normal_expansions++;
+        }
+        else{
+            spec_exp_used++;
         }
         // std::cerr << heap;
         assert(heap.heap_property());
         assert(heap.check_handles());
     }
+    std::cerr << "Normal expansions: " << normal_expansions << "\n";
+    WorkerMetadata total_mdat;
+    total_mdat.heap_top_fetch.resize(workers);
+    total_mdat.recent_push_fetch.resize(workers);
+    for (int i = 1; i < workers; i++){
+        std::cerr << "Worker " << i << ": ";
+        std::cerr << wmdat[i-1].total() << "\n";
+        total_mdat.add(wmdat[i-1]);
+    }
+    std::cerr << "Spec exp dist: " << total_mdat;
+    std::cerr << "Total spec exp: " << total_mdat.total() << "\n";
+    std::cerr << "Spec exp used: " << spec_exp_used << "\n";
     stop_source.request_stop();
     for (auto& thread: threads){
         thread.join();
