@@ -4,7 +4,7 @@ DEBUG_FLAGS := -g -Werror -Wall -Wextra
 RELEASE_FLAGS := -O3 -DNDEBUG
 
 SRC := heap_test.cpp
-HDR :=  cafe_heap.hpp
+HDR :=  cafe_heap2.hpp
 TARGET := program
 
 DEBUG_DIR := debug

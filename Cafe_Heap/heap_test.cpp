@@ -1,4 +1,4 @@
-#include "cafe_heap.hpp"
+#include "cafe_heap2.hpp"
 #include <cstddef>
 #include <ctime>
 #include <cstdlib>
@@ -41,7 +41,7 @@ void thread_speculate(std::stop_token token, CafeMinBinaryHeap<Node, NodeComp>& 
         volatile std::size_t * sum_i = &s_i;
         while(!token.stop_requested()){
 			// auto start = std::chrono::high_resolution_clock::now();
-			HeapNode<Node, NodeComp> *hn = open.fetch_work();
+			HeapNode<Node, NodeComp> *hn = fetch_work(open);
 			if(hn == nullptr){
 				continue;
 			}
@@ -64,7 +64,7 @@ int main(int argc, char* argv[]){
     std::vector<std::jthread> threads;
     std::stop_source stop_source;
 
-    std::size_t test_n_pop = 1000000;
+    std::size_t test_n_pop = 10000;
     unsigned int ratio_push_to_pop = 5;
     std::srand(std::time(0)); // use current time as seed for random generator
     std::size_t total_pushes = ratio_push_to_pop * test_n_pop;
@@ -74,7 +74,7 @@ int main(int argc, char* argv[]){
         g_values.push_back(rand());
     }
 
-    CafeMinBinaryHeap<Node, NodeComp> heap(total_pushes);
+    CafeMinBinaryHeap<Node, NodeComp> heap(total_pushes, workers);
     for (int i = 1; i < workers; i++){
         threads.emplace_back(&thread_speculate, stop_source.get_token(), std::ref(heap), slowdown);
     }
@@ -83,17 +83,20 @@ int main(int argc, char* argv[]){
 
     auto search_start_time = std::chrono::high_resolution_clock::now();
     for (std::size_t i = 0; i < test_n_pop; i++){
+        auto succ = node_pool.reserve(ratio_push_to_pop);
+        heap.batch_recent_push(succ, ratio_push_to_pop);
         for(std::size_t j = 0; j < ratio_push_to_pop; j++){
-            auto n = node_pool.reserve(1);
+            auto n = succ + j;
             n->search_node.g = g_values[j + ratio_push_to_pop*i];
             heap.push(n);
             // std::cerr << "push: " << *n << "\n";
+            // std::cerr << heap;
             // assert(heap.heap_property());
-
         }
         // std::cerr << heap; 
         auto& n = heap.top();
         sum += n.search_node.g;
+        // std::cerr << heap;
         // std::cerr << "pop: " << heap.top() << "\n";
         heap.pop();
         if(!n.is_completed()){
