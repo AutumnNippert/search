@@ -132,14 +132,16 @@ if __name__ == '__main__':
     try:
         if file and plot:
             data = get_json_from_file(file)
+            results = data['results']
             plotname = file.split('.')[0]
-            plot_xvar_over_yvar(data, plot[0], plot[1], plotname, logx, logy, x_var_override, y_var_override, title_override, output, (0,36))
+            plot_xvar_over_yvar(results, plot[0], plot[1], plotname, logx, logy, x_var_override, y_var_override, title_override, output, (0,36))
         elif folder and plot:
             files = os.listdir(folder)
             for file in files:
                 data = get_json_from_file(folder + '/' + file)
+                results = data['results']
                 plotname = file.split('.')[0]
-                plot_xvar_over_yvar(data, plot[0], plot[1], plotname, logx, logy, x_var_override, y_var_override, title_override, output, (0,36))
+                plot_xvar_over_yvar(results, plot[0], plot[1], plotname, logx, logy, x_var_override, y_var_override, title_override, output, (0,36))
         else:
             print('Please provide a file/folder and plot')
             sys.exit(1)
