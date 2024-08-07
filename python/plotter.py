@@ -50,7 +50,7 @@ def load_data(glob_str) -> pd.DataFrame:
             data.append(eval(f.read()))
     return pd.DataFrame(data)
 
-def figure_gen(df, x, y, title, xlabel, ylabel) -> plt.figure:
+def figure_gen_plot(df, x, y, title, xlabel, ylabel) -> plt.figure:
     plt.figure()
     plt.plot(df[x], df[y])
     plt.xlabel(xlabel)
@@ -58,10 +58,64 @@ def figure_gen(df, x, y, title, xlabel, ylabel) -> plt.figure:
     plt.title(title)
     return plt
 
-def speedup_plot(df, algo, x, file) -> plt.figure:
+def figure_gen(df, x, y, title, xlabel, ylabel, type=plt.plot) -> plt.figure:
+    plt.figure()
+    type(df[x], df[y])
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    plt.title(title)
+    return plt
+
+def thread_speedup_plot(df, algo, exp, file) -> plt.figure:
     df = df[df['algorithm'] == algo]
     df = df[df['file'] == file]
-    return figure_gen(df, x, 'Speedup', f'{algo} Speedup vs {x}', x, 'Speedup')
+    df = df[df['slowdown'] == exp]
+    return figure_gen(df, 'threads', 'Speedup', f'{algo} Speedup over Thread Count at Slowdown of {exp}', 'Threads', 'Speedup')
+
+def expansion_rate_plot(df, algo, thread_count, file) -> plt.figure:
+    df = df[df['algorithm'] == algo]
+    df = df[df['file'] == file]
+    df = df[df['threads'] == thread_count]
+    return figure_gen(df, 'Astar Expansion Rate', 'Speedup', f'{algo} Speedup at A* Expansion Rate with {thread_count} threads', 'A* Expansion Rate', 'Speedup')
+
+def export_all_expansion_rate_plots(df, algo, thread_count) -> None:
+    for file in df['file'].unique():
+        fig = expansion_rate_plot(df, algo, thread_count, file)
+        fig.savefig(f'{algo}_{thread_count}_expansion_rate_{file}.png')
+        
+def export_all_speedup_plots(df, algo, exp) -> None:
+    for file in df['file'].unique():
+        fig = thread_speedup_plot(df, algo, exp, file)
+        fig.savefig(f'{algo}_{exp}_speedup_{file}.png')
+
+def export_all(df, algo) -> None:
+    # export all speedup plots from all exp rates and vice versa for all files
+    for exp in df['slowdown'].unique():
+        export_all_speedup_plots(df, algo, exp)
+    for thread_count in df['threads'].unique():
+        export_all_expansion_rate_plots(df, algo, thread_count)
+        
+def export_astar_speedup_over_slowdown(df) -> None:
+    # export all speedup scatter plot for astar over all slowdowns
+    exprate = df.loc[:,['file', 'slowdown', 'Astar Expansion Rate']]
+    grouped = exprate.groupby('slowdown')['Astar Expansion Rate']
+    mean_expansion_rate = grouped.mean()
+    std_expansion_rate = grouped.std()
+
+    # Scatter plot with error bars
+    plt.figure()
+    plt.errorbar(mean_expansion_rate.index, mean_expansion_rate, yerr=std_expansion_rate, fmt='o', color='blue', ecolor='lightblue', elinewidth=1, capsize=4, capthick=1, markersize=5)
+    
+    plt.xscale('log')
+    plt.yscale('log')
+    
+    xticks = [10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000] # very cool
+    plt.xticks(xticks, xticks)
+        
+    plt.xlabel('Slowdown')
+    plt.ylabel('A* Expansion Rate')
+    plt.title('A* Expansion Rate over Slowdown')
+    plt.savefig('astar_expansion_rate_over_slowdown.png')
 
 def help():
     print("Default variables:")
@@ -70,6 +124,10 @@ def help():
     print("Functions:")
     print("load_data(glob_str) -> pd.DataFrame")
     print("figure_gen(df, x, y, title, xlabel, ylabel) -> plt.figure")
+    print("thread_speedup_plot(df, algo, exp, file) -> plt.figure")
+    print("expansion_rate_plot(df, algo, thread_count, file) -> plt.figure")
+    print("export_all_expansion_rate_plots(df, algo, thread_count) -> None")
+    print("export_all_speedup_plots(df, algo, exp) -> None")
     print()
     print("Imported modules:")
     print("pd: pandas")
@@ -90,15 +148,8 @@ if __name__ == "__main__":
     df['Astar Expansion Rate'] = df['total nodes expanded'] / df['astar wall time']
 
     df = df.sort_values(by=['algorithm', 'file', 'threads', 'slowdown'])
-
-    plt.figure()
-    plt.scatter(df['threads'], df['Speedup'])
-    plt.xlabel('Threads')
-    plt.ylabel('Speedup')
-    plt.title('Speedup vs Threads')
-    #save the plot
-    plt.savefig('speedup.png')
-    # print(df)
+    
+    export_astar_speedup_over_slowdown(df)
 
     print(f"Data loaded from {len(df)} files")
     print("------------------------------")

@@ -41,6 +41,8 @@ runner = sys.argv[1]
 folder = sys.argv[2]
 algo_list = sys.argv[3:]
 
+SKIP_EXISTING = True
+
 if not os.path.exists(folder):
     print(json.dumps({"error": f"{folder} does not exist."}))
     exit(1)
@@ -74,11 +76,32 @@ for file in lst:
     file_results = {}
     for algo in algo_list:
         algokey = '_'.join(algo.split()).replace(" ", "") + f"-{file}"
+        algoname = algo.split()[0]
         args = algo.split()[1:]
         args_str = " ".join(args)
         command = f"{runner} {algo} < {folder}/{file} > tmp"
         astar_command = f"{runner} astar-basic {args_str} < {folder}/{file} > tmp"
         try:
+            if "-exp" in args_str:
+                # get number after -exp in command
+                exp = args_str.split("-exp")[1].split()[0]
+                exp = int(exp)
+            else:
+                exp = 0
+
+            #same with threads
+            if "-threads" in args_str:
+                threads = args_str.split("-threads")[1].split()[0]
+                threads = int(threads)
+            else:
+                threads = 1
+            
+            if(SKIP_EXISTING):
+                print(f"Checking if ./algocomp_res/{algoname}-{threads}-{exp}-{file}.json exists", file=sys.stderr)
+                if(os.path.exists(f"./algocomp_res/{algoname}-{threads}-{exp}-{file}.json")):
+                    print(f"Skipping {algokey} as it already exists", file=sys.stderr)
+                    continue
+            
             subprocess.check_output(command, shell=True)
             with open("tmp", "r") as f:
                 output = f.read()
@@ -93,20 +116,10 @@ for file in lst:
             astar_result = get_json_from_output(astar_output)
 
             result["file"] = file
-            if "-exp" in args_str:
-                # get number after -exp in command
-                exp = args_str.split("-exp")[1].split()[0]
-                result["slowdown"] = int(threads)
-            else:
-                result["slowdown"] = 0
-
-            #same with threads
-            if "-threads" in args_str:
-                threads = args_str.split("-threads")[1].split()[0]
-                result["threads"] = int(threads)
-            else:
-                result["threads"] = 1
+            result["threads"] = threads
+            result["slowdown"] = exp
             result["astar wall time"] = astar_result["total wall time"]
+            result["astar expansion rate"] = astar_result["total nodes expanded"] / astar_result["total wall time"]
 
             # print all results to stderr
             print(f"{algokey}", file=sys.stderr)
@@ -119,7 +132,7 @@ for file in lst:
 
         except Exception as e:
             results["failed_runs"].append({"command": command, "error": str(e)})
-            print(f"Error running {algokey}: {e}", file=sys.stderr)
+            print(f"Error running {command}: {e}", file=sys.stderr)
     
     print(f"Runtime")
 
