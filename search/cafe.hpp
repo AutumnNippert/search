@@ -16,8 +16,8 @@
 #include <atomic>
 
 #define OPEN_LIST_SIZE 100000000
-#define TOP_QUEUE_SIZE 8
-#define RECENT_QUEUE_SIZE 16
+#define TOP_QUEUE_SIZE 32
+#define RECENT_QUEUE_SIZE 4
 #define DEBUG true
 
 template <class D> struct CAFE : public SearchAlgorithm<D> {
@@ -170,6 +170,7 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 			// 	continue; // skip trying to search the open list
 				hn = fetch_work(open, wm);
 				if(hn == nullptr){
+
 					thread_misses++;
 					continue;
 				}
@@ -182,6 +183,27 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 			waste_time(extra_calcs);
 			hn->set_completed(successor_ret.first, successor_ret.second);
 			total_nodes_speculated++;
+		}
+	}
+
+	inline ClosedState discard_successor(const CAFE<D>::Node& kid) const{
+		auto dup_it = closed.find(kid.state);
+		if (dup_it != closed.end()) { // if its in closed, check if dup is better
+			HeapNode<Node, NodeComp> * dup_hn = dup_it->second;
+			Node &dup = dup_hn->search_node;
+			if (kid.g >= dup.g) { // kid is worse so don't bother
+				return ClosedState::prune;
+			}
+			return ClosedState::improved;
+		}
+		return ClosedState::unseen;
+	}
+
+	inline void mask_closed(HeapNode<Node, NodeComp>* successors, size_t n_precomputed_successors, std::vector<ClosedState>& successor_mask) const{
+		successor_mask.clear();
+		successor_mask.reserve(n_precomputed_successors);
+		for(std::size_t i = 0; i < n_precomputed_successors; i++){
+			successor_mask.push_back(discard_successor(successors[i].search_node));
 		}
 	}
 
@@ -200,6 +222,7 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 
 		std::vector<std::jthread> threads;
 		std::stop_source stop_source;
+		std::vector<ClosedState> successor_mask;
 		//std::latch start_latch(num_threads + 1);
 		
 		auto& nodes = node_pools[0];
@@ -222,7 +245,6 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 
 		while (!open.empty() && !SearchAlgorithm<D>::limit()) {	
 			HeapNode<Node, NodeComp>* hn = open.get(0);
-			open.pop();
 			Node* n = &(hn->search_node);
 			State buf, &state = d.unpack(buf, n->state);
 
@@ -308,14 +330,17 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 			std::pair<HeapNode<Node, NodeComp> *, std::size_t> successor_ret;
 
 			bool wasSpec = false;
-
+			if(hn->is_reserved()){
+				hn->wait_completed();
+			}
 			if(hn->is_completed()){
 				// std::cerr << "Speculated Node Expanded" << std::endl;
 				prec_expanded_source.add(hn->ee);
 				speculated_nodes_expanded++;
 				successor_ret = hn->get_successors();
 				wasSpec = true;
-			}else{
+			}
+			else{
 				// std::cerr << "Manual Expansion" << std::endl;
 				manual_expansions++;
 				successor_ret = expand(d, hn, nodes, state);
@@ -336,14 +361,31 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 
 			HeapNode<Node, NodeComp>* successors = successor_ret.first;
 			size_t n_precomputed_successors = successor_ret.second;
-			open.batch_recent_push(successors, n_precomputed_successors);
 
-			for (unsigned int i = 0; i < n_precomputed_successors; i++) {
+			mask_closed(successors, n_precomputed_successors, successor_mask);
+			// std::cerr << "Successors: ";
+			// for (unsigned int i = 0; i < n_precomputed_successors; i++){
+			// 	std::cerr << successors[i] << ", ";
+			// }
+			// std::cerr << "\n";
+			open.set_priority_node(successors, n_precomputed_successors, successor_mask);
+			open.batch_recent_push(successors, n_precomputed_successors, successor_mask, n);
+
+			open.pop();
+			for (unsigned int i = 0; i < n_precomputed_successors; i++){
 				SearchAlgorithm<D>::res.gend++;
+				if(successor_mask[i] == ClosedState::prune){
+					continue;
+				}
 				HeapNode<Node, NodeComp>* successor = &(successors[i]);
 				Node *kid = &(successor->search_node);
 				assert(kid);
 
+				if(successor_mask[i] == ClosedState::unseen){
+					open.push(successor); // add to open list
+					closed[kid->state] = successor; // add to closed list
+					continue;
+				}
 				auto dup_it = closed.find(kid->state);
 				if (dup_it != closed.end()) { // if its in closed, check if dup is better
 					HeapNode<Node, NodeComp> * dup_hn = dup_it->second;
@@ -356,30 +398,8 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 					open.decrease_key(dup_hn->handle, successor);
 					closed[kid->state] = successor;
 				}
-				else{
-					open.push(successor); // add to open list
-					closed[kid->state] = successor; // add to closed list
-				}
-
-				// if (wasSpec){
-				// 	// add to speculated node delays
-				// 	speculated_node_delays[SearchAlgorithm<D>::res.expd - kid->nodes_expanded_at_time_of_expansion]++;
-				// }
-				// else{
-				// 	// add to node delays
-				// 	if(kid->parent == nullptr){
-				// 		node_delays[0]++;
-				// 	}
-				// 	else{
-				// 		node_delays[SearchAlgorithm<D>::res.expd - kid->nodes_expanded_at_time_of_expansion]++;
-				// 	}
-				// }
+				
 			}
-			// long double sum = 0;
-			// for(size_t i = 0; i < 10; i++){
-			// 	sum = sin(sum + rand());
-			// }
-			// total_sum += sum;
 		}
 		this->finish();
 	}
@@ -437,7 +457,7 @@ private:
 		for (unsigned int i = 0; i < ops.size(); i++) {
 			if (ops[i] == n->pop)
 				continue;
-
+			successors[successor_count].zero();
 			Node * kid = &(successors[successor_count].search_node);	
 			assert (kid != nullptr);
 			successor_count++;
