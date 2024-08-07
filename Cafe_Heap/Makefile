@@ -1,10 +1,10 @@
 CXX := g++
 CXXFLAGS := -std=c++20
 DEBUG_FLAGS := -g -Werror -Wall -Wextra
-RELEASE_FLAGS := -O3 -DNDEBUG
+RELEASE_FLAGS := -O3 -DNDEBUG -fno-omit-frame-pointer -g 
 
 SRC := heap_test.cpp
-HDR :=  cafe_heap.hpp
+HDR :=  cafe_heap2.hpp
 TARGET := program
 
 DEBUG_DIR := debug
