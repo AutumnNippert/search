@@ -31,6 +31,14 @@ template <class D> struct SPAstar : public SearchAlgorithm<D> {
 			return const_cast<PackedState&>(s).hash(nullptr);
 		}
 	};
+
+	inline void waste_time(std::size_t n){
+		std::size_t s_i = 0;
+		volatile std::size_t * sum_i = &s_i;
+		for(std::size_t j = 0; j < n; j++){
+			*sum_i += j;
+		}
+	}
 	
 	struct Node {
 		int openind;
@@ -217,10 +225,11 @@ private:
 			kid->op = op;
 			kid->pop = e.revop;
 
+			waste_time(extra_calcs);
+
 			// should be covered by lock guards above
 			closed.emplace(kid->state, kid);
 			open.push(kid);
-
 		}
 	}
 

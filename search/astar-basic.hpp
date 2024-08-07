@@ -72,6 +72,16 @@ template <class D> struct AstarBasic : public SearchAlgorithm<D> {
 			return stream;
 		}
 	};
+	
+	inline void waste_time(std::size_t n){
+		std::size_t s_i = 0;
+		volatile std::size_t * sum_i = &s_i;
+		for(std::size_t j = 0; j < n; j++){
+			*sum_i += j;
+		}
+	}
+
+
 
 	static inline void dump_closed(std::ostream& stream, const boost::unordered_flat_map<PackedState, Node *, StateHasher, StateEq>& c){
 		stream << "Closed:\n";
@@ -200,11 +210,7 @@ private:
 			// std::cerr << "push:" << *kid << "\n";
 			// std::cerr << open << "\n";
 		}
-		long double sum = 0;
-		for(size_t i = 0; i < extra_calcs; i++){
-			sum = sin(sum + rand());
-		}
-		total_sum += sum;
+		waste_time(extra_calcs);
 	}
 
 	Node *init(D &d, State &s0) {
