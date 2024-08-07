@@ -1,7 +1,7 @@
 // Copyright © 2013 the Search Authors under the MIT license. See AUTHORS for the list of authors.
 #pragma once
 #include "../search/search.hpp"
-#include "../Cafe_Heap/cafe_heap.hpp"
+#include "../Cafe_Heap/cafe_heap2.hpp"
 #include <boost/unordered/unordered_flat_map.hpp>
 #include <boost/circular_buffer.hpp>
 #include <unistd.h>
@@ -16,6 +16,8 @@
 #include <atomic>
 
 #define OPEN_LIST_SIZE 100000000
+#define TOP_QUEUE_SIZE 8
+#define RECENT_QUEUE_SIZE 16
 #define DEBUG true
 
 template <class D> struct CAFE : public SearchAlgorithm<D> {
@@ -46,7 +48,7 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 		PackedState state;
 		Oper op, pop;
 		Cost f, g;
-		size_t nodes_expanded_at_time_of_expansion;
+		// size_t nodes_expanded_at_time_of_expansion;
 
 		Node(){}
 
@@ -88,9 +90,21 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 		stream << "\n";
 	}
 
+	static inline std::size_t get_num_threads(int argc, const char *argv[]){
+		std::size_t num_threads = 1;
+		for (int i = 0; i < argc; i++) {
+			if (strcmp(argv[i], "-threads") == 0){
+				num_threads = strtod(argv[++i], NULL);
+				if(num_threads <= 0 ) {
+					exit(1);
+				}
+			}
+		}
+		return num_threads;
+	}
 
 	CAFE(int argc, const char *argv[]):
-	 SearchAlgorithm<D>(argc, argv), open(OPEN_LIST_SIZE), open_queue(2) {
+	 SearchAlgorithm<D>(argc, argv),open(OPEN_LIST_SIZE, RECENT_QUEUE_SIZE, TOP_QUEUE_SIZE){
 		num_threads = 1;
 		for (int i = 0; i < argc; i++) {
 			if (strcmp(argv[i], "-threads") == 0){
@@ -103,6 +117,11 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 				extra_calcs = strtod(argv[++i], NULL);
 			}
 		}
+	    wmdat.resize(num_threads-1);
+		for(std::size_t i = 1; i < num_threads; i++){
+			wmdat[i-1].heap_top_fetch.resize(TOP_QUEUE_SIZE);
+        	wmdat[i-1].recent_push_fetch.resize(RECENT_QUEUE_SIZE);
+		}
 		node_pools.reserve(num_threads);
 		for (size_t i = 0; i < num_threads; i++){
 			node_pools.emplace_back(OPEN_LIST_SIZE);
@@ -113,7 +132,7 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 		// delete nodes;
 	}
 
-	void thread_speculate(D &d, size_t id, std::stop_token token, NodePool<Node, NodeComp>& nodes){
+	void thread_speculate(D &d, size_t id, std::stop_token token, NodePool<Node, NodeComp>& nodes, WorkerMetadata& wm){
 		// NodePool<Node, NodeComp> nodes(OPEN_LIST_SIZE);
 		while(!token.stop_requested()){
 			// long double sum = 0;
@@ -125,41 +144,42 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 			// search open_queue
 			bool found = false;
 			HeapNode<Node, NodeComp> *hn = nullptr;
-			for (size_t i = 0; i < open_queue.size(); i++){
-				if (token.stop_requested()){
-					return;
-				}
+			// for (size_t i = 0; i < open_queue.size(); i++){
+			// 	if (token.stop_requested()){
+			// 		return;
+			// 	}
 				
-				hn = open_queue[i];
-				if(hn == nullptr){
-					break; // if the node is null, leave the loop
-				}
-				assert(hn != nullptr);
-				int res = hn->reserve();
-				if (res == 0){
-					found = true;
-					break;
-				}
-				else if(res == 2){
-					speculations_collided++;
-				}
-				failed_reserves++;
-			}
+			// 	hn = open_queue[i];
+			// 	if(hn == nullptr){
+			// 		break; // if the node is null, leave the loop
+			// 	}
+			// 	assert(hn != nullptr);
+			// 	int res = hn->reserve();
+			// 	if (res == 0){
+			// 		found = true;
+			// 		break;
+			// 	}
+			// 	else if(res == 2){
+			// 		speculations_collided++;
+			// 	}
+			// 	failed_reserves++;
+			// }
 			// if hn still bad, try to get from open
-			if (!found){
-				thread_misses++;
-				continue; // skip trying to search the open list
-				hn = open.fetch_work(num_threads*num_threads);
+			// if (!found){
+			// 	thread_misses++;
+			// 	continue; // skip trying to search the open list
+				hn = fetch_work(open, wm);
 				if(hn == nullptr){
 					thread_misses++;
 					continue;
 				}
-			}
+			// }
 
 			Node* n = &(hn->search_node);
 			State buf, &state = d.unpack(buf, n->state);
 
 			auto successor_ret = expand(d, hn, nodes, state);
+			waste_time(extra_calcs);
 			hn->set_completed(successor_ret.first, successor_ret.second);
 			total_nodes_speculated++;
 		}
@@ -169,9 +189,14 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 		this->start();
 		// get time
 		auto start = std::chrono::high_resolution_clock::now();
+		std::size_t s_i = 0;
+        volatile std::size_t * sum_i = &s_i;
 
 		size_t speculated_nodes_expanded = 0;
 		size_t manual_expansions = 0;
+		WorkerMetadata prec_expanded_source;
+		prec_expanded_source.heap_top_fetch.resize(TOP_QUEUE_SIZE);
+		prec_expanded_source.recent_push_fetch.resize(RECENT_QUEUE_SIZE);
 
 		std::vector<std::jthread> threads;
 		std::stop_source stop_source;
@@ -182,11 +207,10 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 		HeapNode<Node, NodeComp> * hn0 = init(d, nodes, s0);
 		closed.emplace(hn0->search_node.state, hn0);
 		open.push(hn0);
-		open_queue.push_back(hn0);
 
 		// Create threads after initial node is pushed
 		for (size_t i = 1; i < num_threads; i++){
-			threads.emplace_back(&CAFE::thread_speculate, this, std::ref(d), i-1,  stop_source.get_token(), std::ref(node_pools[i]));
+			threads.emplace_back(&CAFE::thread_speculate, this, std::ref(d), i-1,  stop_source.get_token(), std::ref(node_pools[i]), std::ref(wmdat[i-1]));
 		}
 
 		if (DEBUG){
@@ -200,7 +224,6 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 			HeapNode<Node, NodeComp>* hn = open.get(0);
 			open.pop();
 			Node* n = &(hn->search_node);
-
 			State buf, &state = d.unpack(buf, n->state);
 
 			if (d.isgoal(state)) {
@@ -210,6 +233,17 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 				// 	thread.join();
 				// 	std::cerr << "joined!";
 				// }
+				WorkerMetadata total_mdat;
+				total_mdat.heap_top_fetch.resize(TOP_QUEUE_SIZE);
+				total_mdat.recent_push_fetch.resize(RECENT_QUEUE_SIZE);
+				for (int i = 1; i < num_threads; i++){
+					std::cerr << "Worker " << i << ": ";
+					std::cerr << wmdat[i-1].total() << "\n";
+					total_mdat.add(wmdat[i-1]);
+				}
+				std::cerr << "Spec exp dist: " << total_mdat;
+				std::cerr << "Total spec exp: " << total_mdat.total() << "\n";
+				std::cerr << "Expanded precomputed node source:\n" << prec_expanded_source;
 
 				if(DEBUG){
 					std::cerr << "\n";
@@ -277,6 +311,7 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 
 			if(hn->is_completed()){
 				// std::cerr << "Speculated Node Expanded" << std::endl;
+				prec_expanded_source.add(hn->ee);
 				speculated_nodes_expanded++;
 				successor_ret = hn->get_successors();
 				wasSpec = true;
@@ -284,6 +319,7 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 				// std::cerr << "Manual Expansion" << std::endl;
 				manual_expansions++;
 				successor_ret = expand(d, hn, nodes, state);
+				waste_time(extra_calcs);
 			}
 
 			// if(hn->reserve()){
@@ -300,6 +336,7 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 
 			HeapNode<Node, NodeComp>* successors = successor_ret.first;
 			size_t n_precomputed_successors = successor_ret.second;
+			open.batch_recent_push(successors, n_precomputed_successors);
 
 			for (unsigned int i = 0; i < n_precomputed_successors; i++) {
 				SearchAlgorithm<D>::res.gend++;
@@ -322,17 +359,21 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 				else{
 					open.push(successor); // add to open list
 					closed[kid->state] = successor; // add to closed list
-					open_queue.push_back(successor);
 				}
 
-				if (wasSpec){
-					// add to speculated node delays
-					speculated_node_delays[kid->nodes_expanded_at_time_of_expansion - kid->parent->nodes_expanded_at_time_of_expansion]++;
-				}
-				else{
-					// add to node delays
-					node_delays[kid->nodes_expanded_at_time_of_expansion - kid->parent->nodes_expanded_at_time_of_expansion]++;
-				}
+				// if (wasSpec){
+				// 	// add to speculated node delays
+				// 	speculated_node_delays[SearchAlgorithm<D>::res.expd - kid->nodes_expanded_at_time_of_expansion]++;
+				// }
+				// else{
+				// 	// add to node delays
+				// 	if(kid->parent == nullptr){
+				// 		node_delays[0]++;
+				// 	}
+				// 	else{
+				// 		node_delays[SearchAlgorithm<D>::res.expd - kid->nodes_expanded_at_time_of_expansion]++;
+				// 	}
+				// }
 			}
 			// long double sum = 0;
 			// for(size_t i = 0; i < 10; i++){
@@ -376,6 +417,8 @@ private:
 
 	size_t extra_calcs = 0;
 
+	std::vector<WorkerMetadata> wmdat;
+
 	// make atomic vector of size 1 million all set to 0
 	std::vector<size_t> node_delays = std::vector<size_t>(OPEN_LIST_SIZE, 0);
 	std::vector<size_t> speculated_node_delays = std::vector<size_t>(OPEN_LIST_SIZE, 0);
@@ -407,17 +450,17 @@ private:
 			kid->parent = n;
 			kid->op = ops[i];
 			kid->pop = e.revop;
-			kid->nodes_expanded_at_time_of_expansion = SearchAlgorithm<D>::res.expd;
+			// kid->nodes_expanded_at_time_of_expansion = SearchAlgorithm<D>::res.expd;
 			// std::cerr << kid->nodes_expanded_at_time_of_expansion - n->nodes_expanded_at_time_of_expansion << std::endl;
 			// node_delays[kid->nodes_expanded_at_time_of_expansion - n->nodes_expanded_at_time_of_expansion]++;
 			total_nodes_observed++; // generated
 		}
 		
-		long double sum = 0;
-		for(size_t i = 0; i < extra_calcs; i++){
-			sum = sin(sum + rand());
-		}
-		total_sum += sum;
+		// long double sum = 0;
+		// for(size_t i = 0; i < extra_calcs; i++){
+		// 	sum = sin(sum + rand());
+		// }
+		// total_sum += sum;
 
 		// auto end = std::chrono::high_resolution_clock::now();
 		// std::chrono::duration<double> elapsed_seconds = end - start;
@@ -428,6 +471,8 @@ private:
 
 	HeapNode<Node, NodeComp> * init(D &d, NodePool<Node, NodeComp> &nodes, State &s0) {
 		HeapNode<Node, NodeComp> * hn0 = nodes.reserve(1);
+		hn0->zero();
+		//hn0->mark_fresh();
 		Node* n0 = &(hn0->search_node);
 		d.pack(n0->state, s0);
 		n0->g = Cost(0);
@@ -438,6 +483,5 @@ private:
 	}
 
 	CafeMinBinaryHeap<Node, NodeComp> open;
-	boost::circular_buffer<HeapNode<Node, NodeComp>*> open_queue;
 	boost::unordered_flat_map<PackedState, HeapNode<Node, NodeComp> *, StateHasher, StateEq> closed;
 };
