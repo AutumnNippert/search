@@ -18,6 +18,14 @@ inline void waste_time(std::size_t n){
 using handle_t = std::size_t;
 enum WorkerState {heapTop, recentPush, both, neither};
 
+struct ExpansionEntry{
+    WorkerState state;
+    unsigned int queue_depth;
+
+    ExpansionEntry() = default;
+    ExpansionEntry(WorkerState ws, std::size_t i):state(ws),queue_depth(static_cast<unsigned int>(i)){}
+};
+
 struct WorkerMetadata{
     std::vector<std::size_t> heap_top_fetch;
     std::vector<std::size_t> recent_push_fetch;
@@ -27,7 +35,18 @@ struct WorkerMetadata{
     inline void add(const WorkerMetadata& other){
         for(std::size_t i = 0; i < heap_top_fetch.size(); i++){
             heap_top_fetch[i] += other.heap_top_fetch[i];
+        }
+         for(std::size_t i = 0; i < recent_push_fetch.size(); i++){
             recent_push_fetch[i] += other.recent_push_fetch[i];
+        }
+    }
+
+    inline void add(const ExpansionEntry& ee){
+        if(ee.state == WorkerState::heapTop){
+            heap_top_fetch[ee.queue_depth]++;
+        }
+        else if(ee.state == WorkerState::recentPush){
+            recent_push_fetch[ee.queue_depth]++;
         }
     }
 
@@ -35,6 +54,8 @@ struct WorkerMetadata{
         std::size_t retval = 0;
         for(std::size_t i = 0; i < heap_top_fetch.size(); i++){
             retval += heap_top_fetch[i];
+        }
+        for(std::size_t i = 0; i < recent_push_fetch.size(); i++){
             retval += recent_push_fetch[i];
         }
         return retval;
@@ -60,8 +81,9 @@ struct WorkerMetadata{
         stream << "]\n";
         return stream;
     }
-
 };
+
+
 
 template <typename Node_t, typename Compare>
 struct HeapNode{
@@ -69,10 +91,11 @@ struct HeapNode{
         std::atomic<HeapNode<Node_t, Compare> *> precomputed_successors;  // array of precomputed successors
         std::size_t n_precomputed_successors;
         std::atomic<bool> reserved;
-        std::atomic<bool> spoiled;
+        // std::atomic<bool> spoiled;
     public:
         Node_t search_node;  // the usual search node: {state, g, f, parent...}
         handle_t handle;
+        ExpansionEntry ee;
         
         constexpr HeapNode(){};
 
@@ -90,25 +113,26 @@ struct HeapNode{
             return reserved.compare_exchange_strong(expected, true, std::memory_order_relaxed);
         }
 
-        inline void spoil(){
-            if(reserved.load(std::memory_order_relaxed)){  // has been reserved
-                if(is_completed()){  //has completed
-                    zero();
-                }
-                else{  // maybe has not completed
-                    spoiled = true;
-                }
-            }
+        // inline void spoil(){
+        //     if(reserved.load(std::memory_order_relaxed)){  // has been reserved
+        //         if(is_completed()){  //has completed
+        //             zero();
+        //         }
+        //         else{  // maybe has not completed
+        //             spoiled.store(true, std::memory_order_relaxed);
+        //         }
+        //     }
 
-        }
+        // }
 
         inline void set_completed(HeapNode<Node_t, Compare> * pre_array, std::size_t n){ // Worker thread only
             n_precomputed_successors = n;
             precomputed_successors.store(pre_array, std::memory_order_release);
-            if(spoiled){
-                n_precomputed_successors = 0;
-                precomputed_successors.store(nullptr, std::memory_order_release);
-            }
+            // std::cerr << "Set complete: " << *this << "\n";
+            // if(spoiled.load(std::memory_order_relaxed)){
+            //     n_precomputed_successors = 0;
+            //     precomputed_successors.store(nullptr, std::memory_order_release);
+            // }
         }
 
          inline void set_completed(void * pre_array, std::size_t n){ // dummy, do not use
@@ -125,8 +149,13 @@ struct HeapNode{
             return std::make_pair(precomputed_successors.load(std::memory_order_acquire), n_precomputed_successors);
         }
 
+        // inline void mark_fresh(){
+        //     spoiled = false;
+        //     spoiled.store(false, std::memory_order_relaxed);
+        // }
+
         inline HeapNode(const Node_t& node, handle_t h):search_node(node),handle(h){
-            spoiled.store(false, std::memory_order_relaxed);
+            // mark_fresh();
             zero();
         }
 
@@ -190,19 +219,20 @@ class CafeMinBinaryHeap{
     private:
         std::size_t _capacity;  // size of array
         std::size_t size;       // size of heap 
-        const unsigned int queue_size; // size of helper queues
+        const unsigned int recent_queue_size; // size of helper queues
+        const unsigned int top_queue_size; // size of helper queues
         HeapNode<Node_t, Compare>* * _data; // of atomic pointers to nodes
         HeapNode<Node_t, Compare>* * _heap_top;
         HeapNode<Node_t, Compare>* * _recent_push;
         unsigned int _recent_push_index;
 
-        inline unsigned int rnv(unsigned int i) const{
+        inline unsigned int rnv(unsigned int i, unsigned int queue_size) const{
             return i % queue_size;
             //return i & (2*queue_size - 1);  // circular index 
         }
 
         inline unsigned int recent_next_index(){
-            unsigned int retval = rnv(_recent_push_index+1);
+            unsigned int retval = rnv(_recent_push_index+1, recent_queue_size);
             _recent_push_index = retval;
             return retval;
         }
@@ -282,15 +312,15 @@ class CafeMinBinaryHeap{
 
         inline void copyTop(){
             assert(workerState == WorkerState::recentPush || workerState == WorkerState::neither);
-            for(unsigned int i = 0; i < queue_size; i++){
-                if((std::size_t)i >= size){
-                    if(_heap_top[i] == nullptr){
-                        return;
-                    }
-                    _heap_top[i] = nullptr;
+            for(std::size_t i = 1; i <= top_queue_size; i++){
+                if(i >= size){
+                    // if(_heap_top[i] == nullptr){
+                    //     return;
+                    // }
+                    _heap_top[i-1] = nullptr;
                 }
                 else{
-                    _heap_top[i] = _data[i];
+                    _heap_top[i-1] = _data[i];
                 }
             }
         }
@@ -298,7 +328,7 @@ class CafeMinBinaryHeap{
 
     public:  
         std::atomic<WorkerState> workerState;     
-        inline CafeMinBinaryHeap(std::size_t capacity, std::size_t queue_capacity):_capacity(capacity),queue_size(queue_capacity),_recent_push_index(0),workerState(WorkerState::neither){
+        inline CafeMinBinaryHeap(std::size_t capacity, std::size_t recent_queue_capacity, std::size_t top_queue_capacity):_capacity(capacity),recent_queue_size(recent_queue_capacity),top_queue_size(top_queue_capacity),_recent_push_index(0),workerState(WorkerState::neither){
             // setup heap before workers!
             _data = reinterpret_cast<HeapNode<Node_t, Compare>* *>(std::malloc(capacity * sizeof(HeapNode<Node_t, Compare> *)));
             if(_data == nullptr){
@@ -307,10 +337,12 @@ class CafeMinBinaryHeap{
             }
             size = 0;
 
-            _heap_top = new HeapNode<Node_t, Compare>*[queue_capacity];
-            _recent_push = new HeapNode<Node_t, Compare>*[queue_capacity];
-            for(std::size_t i = 0; i < queue_capacity; i++){
+            _heap_top = new HeapNode<Node_t, Compare>*[top_queue_capacity];
+            _recent_push = new HeapNode<Node_t, Compare>*[recent_queue_capacity];
+            for(std::size_t i = 0; i < top_queue_capacity; i++){
                 _heap_top[i] = nullptr;
+            }
+            for(std::size_t i = 0; i < recent_queue_capacity; i++){
                 _recent_push[i] = nullptr;
             }
         }
@@ -342,7 +374,7 @@ class CafeMinBinaryHeap{
 
         inline void batch_recent_push(HeapNode<Node_t, Compare> * nodes, const unsigned int nodes_size){
             setWorkerTop();
-            for(unsigned int i = 0; i < std::min(nodes_size, queue_size); i++){
+            for(unsigned int i = 0; i < std::min(nodes_size, recent_queue_size); i++){
                 push_recent(&nodes[i]);
                 nodes[i].zero();
             }
@@ -369,35 +401,42 @@ class CafeMinBinaryHeap{
 
         inline friend HeapNode<Node_t, Compare> * fetch_work(const CafeMinBinaryHeap<Node_t, Compare>& heap, WorkerMetadata& mdat){  // for worker
             unsigned int i = 0;
-            while (i < 2*heap.queue_size){
-                unsigned int q_ind = heap.rnv(i);
+            while (i < heap.top_queue_size+heap.recent_queue_size){
+                unsigned int q_ind;
                 HeapNode<Node_t, Compare>* * both_q;
                 HeapNode<Node_t, Compare>* n;
-                if(i < heap.queue_size){
+                if(i < heap.top_queue_size){
                     both_q = heap._heap_top;
+                    q_ind = heap.rnv(i, heap.top_queue_size);
                 }
                 else{
+                    q_ind = heap.rnv(i, heap.recent_queue_size);
                     both_q = heap._recent_push;
                 }
-                switch(heap.getWorkerState()){
-                    case WorkerState::both:
-                        n = both_q[q_ind];
-                        break;
-                    case WorkerState::heapTop:
-                        n = heap._heap_top[q_ind];
-                        break;
-                    case WorkerState::recentPush:
-                        n = heap._recent_push[q_ind];
-                        break;
-                    default:
-                        n = nullptr;
-                }
+                auto rpi = heap._recent_push_index;
+                n = both_q[q_ind];
+                // switch(heap.getWorkerState()){
+                //     case WorkerState::both:
+                //         n = both_q[q_ind];
+                //         break;
+                //     case WorkerState::heapTop:
+                //         n = heap._heap_top[q_ind];
+                //         break;
+                //     case WorkerState::recentPush:
+                //         n = heap._recent_push[q_ind];
+                //         break;
+                //     default:
+                //         n = nullptr;
+                // }
                 if(n != nullptr && n->reserve()){
-                    if(i < heap.queue_size){
+                    if(i < heap.top_queue_size){
                         mdat.heap_top_fetch[q_ind]++;
+                        n->ee = ExpansionEntry(WorkerState::heapTop, q_ind);
                     }
                     else{
-                        mdat.recent_push_fetch[q_ind]++;
+                        std::size_t q_i = (heap.recent_queue_size + (q_ind - rpi)) % heap.recent_queue_size;
+                        mdat.recent_push_fetch[q_i]++;
+                        n->ee = ExpansionEntry(WorkerState::recentPush, q_i);
                     }
                     return n;
                 }

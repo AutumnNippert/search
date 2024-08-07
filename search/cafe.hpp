@@ -16,6 +16,8 @@
 #include <atomic>
 
 #define OPEN_LIST_SIZE 100000000
+#define TOP_QUEUE_SIZE 8
+#define RECENT_QUEUE_SIZE 16
 #define DEBUG true
 
 template <class D> struct CAFE : public SearchAlgorithm<D> {
@@ -46,7 +48,7 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 		PackedState state;
 		Oper op, pop;
 		Cost f, g;
-		size_t nodes_expanded_at_time_of_expansion;
+		// size_t nodes_expanded_at_time_of_expansion;
 
 		Node(){}
 
@@ -102,7 +104,7 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 	}
 
 	CAFE(int argc, const char *argv[]):
-	 SearchAlgorithm<D>(argc, argv),open(OPEN_LIST_SIZE, get_num_threads(argc, argv)){
+	 SearchAlgorithm<D>(argc, argv),open(OPEN_LIST_SIZE, RECENT_QUEUE_SIZE, TOP_QUEUE_SIZE){
 		num_threads = 1;
 		for (int i = 0; i < argc; i++) {
 			if (strcmp(argv[i], "-threads") == 0){
@@ -117,8 +119,8 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 		}
 	    wmdat.resize(num_threads-1);
 		for(std::size_t i = 1; i < num_threads; i++){
-			wmdat[i-1].heap_top_fetch.resize(num_threads);
-        	wmdat[i-1].recent_push_fetch.resize(num_threads);
+			wmdat[i-1].heap_top_fetch.resize(TOP_QUEUE_SIZE);
+        	wmdat[i-1].recent_push_fetch.resize(RECENT_QUEUE_SIZE);
 		}
 		node_pools.reserve(num_threads);
 		for (size_t i = 0; i < num_threads; i++){
@@ -192,6 +194,9 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 
 		size_t speculated_nodes_expanded = 0;
 		size_t manual_expansions = 0;
+		WorkerMetadata prec_expanded_source;
+		prec_expanded_source.heap_top_fetch.resize(TOP_QUEUE_SIZE);
+		prec_expanded_source.recent_push_fetch.resize(RECENT_QUEUE_SIZE);
 
 		std::vector<std::jthread> threads;
 		std::stop_source stop_source;
@@ -219,7 +224,6 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 			HeapNode<Node, NodeComp>* hn = open.get(0);
 			open.pop();
 			Node* n = &(hn->search_node);
-
 			State buf, &state = d.unpack(buf, n->state);
 
 			if (d.isgoal(state)) {
@@ -229,6 +233,17 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 				// 	thread.join();
 				// 	std::cerr << "joined!";
 				// }
+				WorkerMetadata total_mdat;
+				total_mdat.heap_top_fetch.resize(TOP_QUEUE_SIZE);
+				total_mdat.recent_push_fetch.resize(RECENT_QUEUE_SIZE);
+				for (int i = 1; i < num_threads; i++){
+					std::cerr << "Worker " << i << ": ";
+					std::cerr << wmdat[i-1].total() << "\n";
+					total_mdat.add(wmdat[i-1]);
+				}
+				std::cerr << "Spec exp dist: " << total_mdat;
+				std::cerr << "Total spec exp: " << total_mdat.total() << "\n";
+				std::cerr << "Expanded precomputed node source:\n" << prec_expanded_source;
 
 				if(DEBUG){
 					std::cerr << "\n";
@@ -296,6 +311,7 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 
 			if(hn->is_completed()){
 				// std::cerr << "Speculated Node Expanded" << std::endl;
+				prec_expanded_source.add(hn->ee);
 				speculated_nodes_expanded++;
 				successor_ret = hn->get_successors();
 				wasSpec = true;
@@ -345,14 +361,19 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 					closed[kid->state] = successor; // add to closed list
 				}
 
-				if (wasSpec){
-					// add to speculated node delays
-					speculated_node_delays[kid->nodes_expanded_at_time_of_expansion - kid->parent->nodes_expanded_at_time_of_expansion]++;
-				}
-				else{
-					// add to node delays
-					node_delays[kid->nodes_expanded_at_time_of_expansion - kid->parent->nodes_expanded_at_time_of_expansion]++;
-				}
+				// if (wasSpec){
+				// 	// add to speculated node delays
+				// 	speculated_node_delays[SearchAlgorithm<D>::res.expd - kid->nodes_expanded_at_time_of_expansion]++;
+				// }
+				// else{
+				// 	// add to node delays
+				// 	if(kid->parent == nullptr){
+				// 		node_delays[0]++;
+				// 	}
+				// 	else{
+				// 		node_delays[SearchAlgorithm<D>::res.expd - kid->nodes_expanded_at_time_of_expansion]++;
+				// 	}
+				// }
 			}
 			// long double sum = 0;
 			// for(size_t i = 0; i < 10; i++){
@@ -429,7 +450,7 @@ private:
 			kid->parent = n;
 			kid->op = ops[i];
 			kid->pop = e.revop;
-			kid->nodes_expanded_at_time_of_expansion = SearchAlgorithm<D>::res.expd;
+			// kid->nodes_expanded_at_time_of_expansion = SearchAlgorithm<D>::res.expd;
 			// std::cerr << kid->nodes_expanded_at_time_of_expansion - n->nodes_expanded_at_time_of_expansion << std::endl;
 			// node_delays[kid->nodes_expanded_at_time_of_expansion - n->nodes_expanded_at_time_of_expansion]++;
 			total_nodes_observed++; // generated
@@ -450,6 +471,8 @@ private:
 
 	HeapNode<Node, NodeComp> * init(D &d, NodePool<Node, NodeComp> &nodes, State &s0) {
 		HeapNode<Node, NodeComp> * hn0 = nodes.reserve(1);
+		hn0->zero();
+		//hn0->mark_fresh();
 		Node* n0 = &(hn0->search_node);
 		d.pack(n0->state, s0);
 		n0->g = Cost(0);
