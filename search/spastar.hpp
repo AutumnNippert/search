@@ -134,7 +134,7 @@ template <class D> struct SPAstar : public SearchAlgorithm<D> {
 
 		Pool<Node> * nodes = new Pool<Node>();
 		Node * n0 = init(d, s0, nodes);
-		closed.emplace(n0->state, n0);
+		closed[n0->state] =  n0;
 		open.push(n0);
 
 		// wait till all threads are done
@@ -218,7 +218,7 @@ private:
 			kid->pop = e.revop;
 
 			// should be covered by lock guards above
-			closed.emplace(kid->state, kid);
+			closed[kid->state] = kid;
 			open.push(kid);
 
 		}

@@ -1,6 +1,7 @@
 // © 2013 the Search Authors under the MIT license. See AUTHORS for the list of authors.
 
 #include "../utils/utils.hpp"
+#include <random>
 #include <vector>
 #include <algorithm>
 #include <cstring>
@@ -121,13 +122,15 @@ int main(int argc, char *argv[]) {
 		puzzle.push_back(i);
 	}
 
-	long unsigned int (*p_rand)(ptrdiff_t) = &getrand;
+	//long unsigned int (*p_rand)(ptrdiff_t) = &getrand;
+	std::random_device r;
+	std::default_random_engine e1(r());
 
 	for (unsigned int i = 0; i < n; i++) {
 		unsigned int check = 1;
 
 		while (check != 0) {
-			random_shuffle(puzzle.begin(), puzzle.end(), p_rand);
+			std::shuffle(puzzle.begin(), puzzle.end(), e1);
 			if (solvable(puzzle, width, height) == 0)
 				check = 0;
 			else
