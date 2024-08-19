@@ -14,9 +14,9 @@ enum { BUFSZ = 100 };
 
 static Rand *r;
 
-static long unsigned int getrand(ptrdiff_t i) {
-	return r->bits() % i;
-}
+// static long unsigned int getrand(ptrdiff_t i) {
+// 	return r->bits() % i;
+// }
 
 void dumptiles(FILE *out, vector<int> ts, unsigned int width, unsigned int height) {
 	for (unsigned int i = 0; i < width*height; i++) {

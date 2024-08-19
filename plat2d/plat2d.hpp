@@ -175,6 +175,8 @@ struct Plat2d {
 			double dx = fabs(s.player.body.bbox.center().x - state.player.body.bbox.center().x);
 			assert (dx <= Maxx);
 			assert (dy <= Maxy);
+			(void)dy;
+			(void)dx;
 		}
 	};
 

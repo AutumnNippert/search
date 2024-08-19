@@ -610,6 +610,7 @@ private:
 
 		unsigned int origsize = best->open.size();
 		double fmin = best->fg().first;
+		(void) origsize; (void)fmin;
 
 		std::vector<typename Lss::Node*> nodes = best->open.data();
 		std::sort(nodes.begin(), nodes.end(),
