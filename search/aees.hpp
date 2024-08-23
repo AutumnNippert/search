@@ -400,6 +400,7 @@ private:
 
 	Node *init(D &d, State &s0) {
 		Node *n0 = nodes->construct();
+		n0->d = -1;
 		d.pack(n0->state, s0);
 		n0->h = d.h(s0);
 		n0->depth = 0;
@@ -412,6 +413,7 @@ private:
 		n0->op = n0->pop = D::Nop;
 		n0->parent = NULL;
 		cand = NULL;
+		assert(n0->d != -1);
 		return n0;
 	}
 

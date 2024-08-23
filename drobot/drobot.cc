@@ -161,6 +161,7 @@ DockRobot::State DockRobot::initialstate() {
 	State buf;
 	State &s1 = unpack(buf, pkd);
 	assert (s == s1);
+	(void)s1;
 	return s;
 }
 

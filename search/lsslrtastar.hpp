@@ -480,7 +480,8 @@ private:
 		if (n->expd)
 			return n->succs;
 
-		State buf, &s = d.unpack(buf, n->state);
+		State buf = State();
+		State &s = d.unpack(buf, n->state);
 
 		this->res.expd++;
 

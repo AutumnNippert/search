@@ -140,6 +140,8 @@ public:
 		PackedState(PackedState &&o) : poses(std::move(o.poses)), x(o.x), y(o.y) {
 		}
 
+		PackedState(const PackedState &o) : poses(o.poses),x(o.x),y(o.y){}
+
 		PackedState &operator=(PackedState &&o) {
 			x = o.x;
 			y = o.y;

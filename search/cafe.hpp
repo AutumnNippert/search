@@ -142,7 +142,7 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 			// total_sum += sum;
 			// auto start = std::chrono::high_resolution_clock::now();
 			// search open_queue
-			bool found = false;
+			//bool found = false;
 			HeapNode<Node, NodeComp> *hn = nullptr;
 			// for (size_t i = 0; i < open_queue.size(); i++){
 			// 	if (token.stop_requested()){
@@ -189,8 +189,8 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 		this->start();
 		// get time
 		auto start = std::chrono::high_resolution_clock::now();
-		std::size_t s_i = 0;
-        volatile std::size_t * sum_i = &s_i;
+		//std::size_t s_i = 0;
+        // volatile std::size_t * sum_i = &s_i;
 
 		size_t speculated_nodes_expanded = 0;
 		size_t manual_expansions = 0;
@@ -236,7 +236,7 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 				WorkerMetadata total_mdat;
 				total_mdat.heap_top_fetch.resize(TOP_QUEUE_SIZE);
 				total_mdat.recent_push_fetch.resize(RECENT_QUEUE_SIZE);
-				for (int i = 1; i < num_threads; i++){
+				for (std::size_t i = 1; i < num_threads; i++){
 					std::cerr << "Worker " << i << ": ";
 					std::cerr << wmdat[i-1].total() << "\n";
 					total_mdat.add(wmdat[i-1]);
@@ -307,14 +307,14 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 			SearchAlgorithm<D>::res.expd++;
 			std::pair<HeapNode<Node, NodeComp> *, std::size_t> successor_ret;
 
-			bool wasSpec = false;
+			//bool wasSpec;
 
 			if(hn->is_completed()){
 				// std::cerr << "Speculated Node Expanded" << std::endl;
 				prec_expanded_source.add(hn->ee);
 				speculated_nodes_expanded++;
 				successor_ret = hn->get_successors();
-				wasSpec = true;
+				//wasSpec = true;
 			}else{
 				// std::cerr << "Manual Expansion" << std::endl;
 				manual_expansions++;

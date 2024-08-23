@@ -225,6 +225,7 @@ fprintf(stderr, "%d: %g,%g (g=%d, h=%g, case=%d)\n", i, state.player.body.bbox.c
 		state = e.state;
 		assert(state.player == path[i].player);
 		assert (he <= i+1);
+		(void)he;
 	}
 /*
 double he = hvis(state);

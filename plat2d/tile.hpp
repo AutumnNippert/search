@@ -7,18 +7,17 @@
 #include "../graphics/image.hpp"
 
 struct Tile {
-	enum {
-		Collide = 1<<0,
-		Water = 1<<1,
-		Down = 1 << 4,
-		Up = 1 << 5,
-		Opaque = 1 << 6,
-	};
+	constexpr static unsigned int Collide = 1<<0;
+	constexpr static unsigned int Water = 1<<1;
+	constexpr static unsigned int Down = 1 << 4;
+	constexpr static unsigned int Up = 1 << 5;
+	constexpr static unsigned int Opaque = 1 << 6;
+	
 
-	enum {
-		Width = 32,
-		Height = 32,
-	};
+	
+	constexpr static unsigned int Width = 32;
+	constexpr static unsigned int Height = 32;
+	
 
 	static int read(FILE*);
 

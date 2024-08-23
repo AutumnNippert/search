@@ -13,7 +13,9 @@ CC:=gcc
 
 AR:=ar
 
-FLAGS:=-O3 -DNDEBUG -fno-omit-frame-pointer -g 
+#FLAGS:=-O3 -DNDEBUG -fno-omit-frame-pointer -g -Wall -Werror #DEBUG RELEASE
+#FLAGS:=-O3 -DNDEBUG -fno-omit-frame-pointer -g -Wall -Werror #RELEASE
+FLAGS:=-O0 -fno-omit-frame-pointer -g -Wall -Werror #DEBUG
 
 # GL_SILENCE_DEPRECATION silences opengl deprecation errors on osx.
 FLAGS +=-DGL_SILENCE_DEPRECATION

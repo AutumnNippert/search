@@ -13,10 +13,10 @@ static const char *infile;
 static const char *outfile;
 static bool echo, labels;
 
-enum {
-	Width = 400,
-	Height = 400,
-};
+
+constexpr static unsigned int Width = 400;
+constexpr static unsigned int Height = 400;
+
 
 int main(int argc, char *argv[]) {
 	for (unsigned int i = 1; i < (unsigned int) argc; i++) {

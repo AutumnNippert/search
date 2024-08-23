@@ -56,7 +56,7 @@ struct Bbox : public geom2d::Bbox {
 };
 
 struct Body {
-	enum { Maxdy = 12 };
+	constexpr static unsigned int Maxdy = 12;
 
 	Body() { }
 

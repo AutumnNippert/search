@@ -100,7 +100,7 @@ template <class D> struct AstarBasic : public SearchAlgorithm<D> {
 		//closed.init(d);
 
 		Node * n0 = init(d, s0);
-		closed.emplace(n0->state, n0);
+		closed[n0->state] = n0;
 		open.push(n0);
 
 		while (!open.empty() && !SearchAlgorithm<D>::limit()) {
@@ -195,7 +195,7 @@ private:
 			kid->op = op;
 			kid->pop = e.revop;
 			// std::cout << "Adding successor " << std::endl;// *kid << std::endl;
-			closed.emplace(kid->state, kid);
+			closed[kid->state]  = kid;
 			open.push(kid);
 			// std::cerr << "push:" << *kid << "\n";
 			// std::cerr << open << "\n";

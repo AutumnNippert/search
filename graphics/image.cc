@@ -62,10 +62,10 @@ void Image::writeeps(FILE *out, bool usletter, int marginpt) const {
 	fprintf(out, "showpage\n");
 }
 
-enum {
-	Widthpt = 612,	/* pts == 8.5 in */
-	Heightpt = 792,	/* pts = 11 in */
-};
+
+constexpr static unsigned int Widthpt = 612;	/* pts == 8.5 in */
+constexpr static unsigned int Heightpt = 792;	/* pts = 11 in */
+
 
 void Image::write_epshdrletter(FILE *out, unsigned int marginpt) const {
 	fprintf(out, "%%!PS-Adobe-3.0\n");

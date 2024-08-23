@@ -11,7 +11,7 @@ struct Elm {
 	static IntpqEntry<Elm> &entry(Elm *e) { return e->ent; }
 };
 
-enum { N = 1000 };
+static constexpr int N = 1000;
 
 bool intpq_push_test() {
 	bool res = true;
@@ -26,7 +26,7 @@ bool intpq_push_test() {
 			res = false;
 		}
 	}
- 
+
 	return res;
 }
 

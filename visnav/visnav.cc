@@ -15,10 +15,9 @@ VisNav::State VisNav::initialstate() {
 	return State(start);
 }
 
-enum {
-	Width = 400,
-	Height = 400,
-};
+
+constexpr static unsigned int Width = 400;
+constexpr static unsigned int Height = 400;
 
 void VisNav::save(const char *file, std::vector<State> path) {
 	Image img(Width, Height);
