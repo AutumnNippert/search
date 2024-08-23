@@ -1,6 +1,7 @@
 #pragma once
 #include <cassert>
 #include <cstddef>
+#include <forward_list>
 #include <memory>
 #include <atomic>
 #include <vector>
@@ -170,15 +171,15 @@ struct HeapNode{
 
 };
 
-template <typename Node_t, typename Compare>
+template <typename Node_t>
 class NodePool{ // NOT THREAD SAFE ONE PER THREAD
     private:
-        HeapNode<Node_t, Compare> * _nodes;
+        Node_t * _nodes;
         const std::size_t _capacity;
         std::size_t _size;
     public:
         NodePool(std::size_t capacity):_capacity(capacity),_size(0){
-            _nodes = reinterpret_cast<HeapNode<Node_t, Compare> *>(std::malloc(capacity * sizeof(HeapNode<Node_t, Compare>)));
+            _nodes = reinterpret_cast<Node_t *>(std::malloc(capacity * sizeof(Node_t)));
             if(_nodes == nullptr){
                 std::cerr << "Error bad malloc\n";
                 exit(-1);
@@ -189,9 +190,9 @@ class NodePool{ // NOT THREAD SAFE ONE PER THREAD
             free(_nodes);
         }
 
-        HeapNode<Node_t, Compare> * reserve(std::size_t n){
+        Node_t * reserve(std::size_t n){
             assert(_size + n <= _capacity);
-            HeapNode<Node_t, Compare> * retval = _nodes + _size;
+            Node_t * retval = _nodes + _size;
             _size += n;
             return retval;
         } 
