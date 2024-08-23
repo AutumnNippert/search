@@ -39,7 +39,6 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 			return const_cast<PackedState&>(s).hash(nullptr);
 		}
 	};
-
 	
 	struct NodeComp;
 
@@ -133,14 +132,7 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 	}
 
 	void thread_speculate(D &d, size_t id, std::stop_token token, NodePool<Node, NodeComp>& nodes, WorkerMetadata& wm){
-		// NodePool<Node, NodeComp> nodes(OPEN_LIST_SIZE);
 		while(!token.stop_requested()){
-			// long double sum = 0;
-			// for(size_t i = 0; i < 10; i++){
-			// 	sum = sin(sum + rand());
-			// }
-			// total_sum += sum;
-			// auto start = std::chrono::high_resolution_clock::now();
 			// search open_queue
 			//bool found = false;
 			HeapNode<Node, NodeComp> *hn = nullptr;
@@ -253,7 +245,6 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 					std::cerr << "Speculated Nodes Expanded: " << speculated_nodes_expanded << std::endl;
 					std::cerr << "Manual Expansions: " << manual_expansions << std::endl;
 					std::cerr << "Time Spent Yielding: " << time_spent_yielding << " sec" << std::endl;
-					std::cerr << "Total Sum: " << total_sum << std::endl;
 					std::cerr << std::endl;
 					std::cerr << "Average Expansion Time: " << average_expansion_time << " sec" << std::endl;
 					std::cerr << std::endl;
@@ -319,7 +310,6 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 				// std::cerr << "Manual Expansion" << std::endl;
 				manual_expansions++;
 				successor_ret = expand(d, hn, nodes, state);
-				waste_time(extra_calcs);
 			}
 
 			// if(hn->reserve()){
@@ -375,11 +365,6 @@ template <class D> struct CAFE : public SearchAlgorithm<D> {
 				// 	}
 				// }
 			}
-			// long double sum = 0;
-			// for(size_t i = 0; i < 10; i++){
-			// 	sum = sin(sum + rand());
-			// }
-			// total_sum += sum;
 		}
 		this->finish();
 	}
@@ -412,8 +397,6 @@ private:
 	
 	std::atomic<double> average_expansion_time = 0;
 	long double time_spent_yielding = 0;
-
-	long double total_sum = 0;
 
 	size_t extra_calcs = 0;
 
@@ -456,16 +439,7 @@ private:
 			total_nodes_observed++; // generated
 		}
 		
-		// long double sum = 0;
-		// for(size_t i = 0; i < extra_calcs; i++){
-		// 	sum = sin(sum + rand());
-		// }
-		// total_sum += sum;
-
-		// auto end = std::chrono::high_resolution_clock::now();
-		// std::chrono::duration<double> elapsed_seconds = end - start;
-		// average_expansion_time = (average_expansion_time * total_nodes_observed + elapsed_seconds.count()) / (total_nodes_observed + 1);
-
+		waste_time(extra_calcs);
 		return std::make_pair(successors, successor_count);
 	}
 
