@@ -66,6 +66,53 @@ def figure_gen(df, x, y, title, xlabel, ylabel, type=plt.plot) -> plt.figure:
     plt.title(title)
     return plt
 
+def average_speedup_over_files(df, algo, slowdown) -> pd.DataFrame:
+    # Filter by algorithm and slowdown
+    df_filtered = df[(df['algorithm'] == algo) & (df['slowdown'] == slowdown)]
+    
+    # Group by 'threads' and calculate the mean and std for speedup across all files
+    grouped = df_filtered.groupby('threads')['Speedup']
+    mean_speedup = grouped.mean()
+    std_speedup = grouped.std()
+    
+    # Create a DataFrame with the mean and std
+    result_df = pd.DataFrame({
+        'threads': mean_speedup.index,
+        'mean_speedup': mean_speedup.values,
+        'std_speedup': std_speedup.values
+    })
+    
+    return result_df
+
+def export_average_speedup_plot(df, algo, slowdown) -> None:
+    result_df = average_speedup_over_files(df, algo, slowdown)
+    exp_to_slowdown = get_astar_exp_over_slowdown(df)
+    # Extract mean and std values from the input DataFrame
+    mean_speedup = result_df['mean_speedup']
+    std_speedup = result_df['std_speedup']
+    threads = result_df['threads']
+    
+    # Scatter plot with error bars
+    plt.figure()
+    plt.plot(threads, mean_speedup, color='blue', linewidth=2, label='Mean Speedup')
+    
+    # Fill the area between mean ± std with a lighter blue color
+    plt.fill_between(threads, mean_speedup - std_speedup, mean_speedup + std_speedup, color='lightblue', alpha=0.4, label='Std Dev')
+    
+    # plt.xscale('log')
+    # plt.yscale('log')
+    
+    plt.xticks(threads, threads)
+        
+    plt.xlabel('Threads')
+    plt.ylabel('Speedup')
+    exp_rate = int(exp_to_slowdown.loc[exp_to_slowdown['slowdown'] == slowdown, 'Astar exp rate'].values[0])
+    plt.title(f'{algo} Average Speedup at {exp_rate} expansions/sec')
+    
+    plt.legend()
+    plt.savefig(f'{algo}_speedup_slowdown_{slowdown}_avg.png')
+    print("Created avg speedup plot")
+
 def thread_speedup_plot(df, algo, exp, file) -> plt.figure:
     df = df[df['algorithm'] == algo]
     df = df[df['file'] == file]
@@ -94,6 +141,17 @@ def export_all(df, algo) -> None:
         export_all_speedup_plots(df, algo, exp)
     for thread_count in df['threads'].unique():
         export_all_expansion_rate_plots(df, algo, thread_count)
+        
+def get_astar_exp_over_slowdown(df) -> pd.DataFrame:
+    exprate = df.loc[:, ['file', 'slowdown', 'Astar Expansion Rate']]
+    grouped = exprate.groupby('slowdown')['Astar Expansion Rate']
+    mean_expansion_rate = grouped.mean()
+    result_df = pd.DataFrame({
+        'slowdown': mean_expansion_rate.index,
+        'Astar exp rate': mean_expansion_rate
+    })
+    return result_df
+    
         
 def export_astar_speedup_over_slowdown(df) -> None:
     # export all speedup scatter plot for astar over all slowdowns
@@ -149,7 +207,11 @@ if __name__ == "__main__":
 
     df = df.sort_values(by=['algorithm', 'file', 'threads', 'slowdown'])
     
+    exp_to_slowdown = get_astar_exp_over_slowdown(df)
     export_astar_speedup_over_slowdown(df)
+    
+    export_average_speedup_plot(df, "cafe", 1000)
+    # export_average_speedup_plot(df, "spastar", 10000)
 
     print(f"Data loaded from {len(df)} files")
     print("------------------------------")
