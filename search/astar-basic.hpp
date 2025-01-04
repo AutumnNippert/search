@@ -200,11 +200,7 @@ private:
 			// std::cerr << "push:" << *kid << "\n";
 			// std::cerr << open << "\n";
 		}
-		long double sum = 0;
-		for(size_t i = 0; i < extra_calcs; i++){
-			sum = sin(sum + rand());
-		}
-		total_sum += sum;
+		waste_time(extra_calcs);
 	}
 
 	Node *init(D &d, State &s0) {
@@ -218,7 +214,6 @@ private:
 	}
 
 	size_t extra_calcs = 0;
-	double total_sum;
 	OpenList<Node, Node, Cost> open;
  	// ClosedList<Node, Node, D> closed;
 	boost::unordered_flat_map<PackedState, Node *, StateHasher, StateEq> closed;

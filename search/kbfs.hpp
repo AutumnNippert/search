@@ -249,11 +249,7 @@ private:
 			children.push_back(kid);
 		}
 
-		long double sum = 0;
-		for(size_t i = 0; i < extra_calcs; i++){
-			sum = sin(sum + rand());
-		}
-		total_sum += sum;
+		waste_time(extra_calcs);
 
 		return children;
 	}
@@ -278,7 +274,6 @@ private:
 	}
 
 	size_t extra_calcs = 0;
-	std::atomic<double> total_sum = 0;
 
 	OpenList<Node, Node, Cost> open;
 	boost::unordered_flat_map<PackedState, Node*, StateHasher, StateEq> closed;

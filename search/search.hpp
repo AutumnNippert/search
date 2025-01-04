@@ -9,6 +9,7 @@
 #include "../structs/binheap.hpp"
 #include "../structs/minmaxheap.hpp"
 #include "../structs/RBTree.hpp"
+#include "../utils/utils.hpp"
 
 #include "closedlist.hpp"
 

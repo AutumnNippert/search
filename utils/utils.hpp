@@ -293,3 +293,12 @@ private:
 	double pdfcoeff;
 	double cdfcoeff;
 };
+
+// was in Cafe_Heap/cafe_heap2.hpp but other files use it too so it's here now
+inline void waste_time(std::size_t n){
+	std::size_t s_i = 0;
+	volatile std::size_t * sum_i = &s_i;
+	for(std::size_t j = 0; j < n; j++){
+		*sum_i += j;
+	}
+}

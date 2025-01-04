@@ -7,14 +7,6 @@
 #include <algorithm>
 #include <iostream>
 
-inline void waste_time(std::size_t n){
-    std::size_t s_i = 0;
-    volatile std::size_t * sum_i = &s_i;
-    for(std::size_t j = 0; j < n; j++){
-        *sum_i += j;
-    }
-}
-
 using handle_t = std::size_t;
 enum WorkerState {heapTop, recentPush, both, neither};
 
